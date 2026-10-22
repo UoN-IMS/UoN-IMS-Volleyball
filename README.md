@@ -3,7 +3,7 @@
 Fixtures, live scoring and standings for the UoN IMS Volleyball league. It's a single web page hosted free on GitHub Pages, with the data in a free Supabase project.
 
 - **Everyone with the link** can see fixtures and standings, score a match on the Live score tab (and Save it to carry on from another phone), and send the result at the end. Results sent this way count straight away and show as "To check".
-- **The organiser** signs in at the bottom of any page ("Organiser sign in") and can then type or change any score, confirm or remove results, import fixtures and edit weeks on the Setup tab. A confirmed result can't be overwritten from Live score.
+- **The organiser** signs in at the bottom of any page ("Organiser sign in") and can then type or change any score, confirm or remove results, import fixtures and edit weeks on the Setup tab. Once a result is sent it's final: nobody else can change it, only the organiser.
 - The database itself checks every result sent from the public (sets to 25, 25, 15, win by 2, the match must exist), so nobody can get around the rules by bypassing the page.
 
 ## Files

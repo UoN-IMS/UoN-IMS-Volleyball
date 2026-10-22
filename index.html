@@ -398,7 +398,7 @@ html.live-full header.top, html.live-full nav.tabs, html.live-full .foot, html.l
     </section>
     <section>
       <h3>Sharing with captains</h3>
-      <p>Just send the site link. Anyone with it can see fixtures and standings and score a match with Live score, then send the result in. Results they send count straight away and show as “To check” until you confirm them. Only you, signed in, can type or change scores, confirm or remove them, and change fixtures. A confirmed score can't be overwritten from Live score.</p>
+      <p>Just send the site link. Anyone with it can see fixtures and standings and score a match with Live score, then send the result in. Results they send count straight away and show as “To check” until you confirm them. Only you, signed in, can type or change scores, confirm or remove them, and change fixtures. Once a result is sent it's final: only you can change it.</p>
     </section>
   </div>
   <p class="foot">All games at DRSV · Hall C courts 1–3 · Hall D courts 4–6</p>
@@ -1277,7 +1277,7 @@ if (typeof document !== "undefined") (function () {
   }
 
   function writeError(m, e) {
-    if (e && e.code === "denied") state.errors[m.id] = "This result is already confirmed. Ask the organiser if it's wrong.";
+    if (e && e.code === "denied") state.errors[m.id] = "A result has already been sent for this match. If it's wrong, contact the organiser.";
     else if (e && e.code === "rejected") state.errors[m.id] = "That score wasn't accepted. Check the set scores.";
     else state.errors[m.id] = "Couldn't save. Check your connection and try again.";
   }
@@ -1427,6 +1427,7 @@ if (typeof document !== "undefined") (function () {
     if (state.liveFull && isIOS && !standalone() && store.get("ims-fulltip") !== "1")
       v.append(el("div", { class: "fulltip" }, el("span", { text: "Safari keeps its own bars on screen. For true full screen, tap Share → Add to Home Screen and score from the app icon." }),
         el("button", { class: "btn", text: "OK", onclick: () => { store.set("ims-fulltip", "1"); renderLive(); } })));
+    if (scoreOf(m) && !state.canAdmin && !matchOver(L)) v.append(el("div", { class: "fulltip" }, el("span", { text: "A result has already been sent for this match, so this count can't be sent. If the result is wrong, contact the organiser." })));
     const remote = remoteFor(m);
     if (remote) {
       const d = remote;
@@ -1469,9 +1470,10 @@ if (typeof document !== "undefined") (function () {
       if (!editable()) {
         box.append(el("p", { class: "msg err", text: "You can't send results from this account. Show this screen to your captain." }));
       } else if (r.complete) {
-        const locked = saved && saved.status === "confirmed" && !state.canAdmin;
-        if (locked) box.append(el("p", { class: "msg", text: "The organiser has already confirmed a result for this match. If it's wrong, show them this screen." }));
-        else if (saved) box.append(el("p", { class: "msg", text: "A result was already sent for this match. Sending replaces it." }));
+        // a sent result is final; only the organiser can change it
+        const locked = saved && !state.canAdmin;
+        if (locked) box.append(el("p", { class: "msg", text: "A result has already been sent for this match. If it's wrong, contact the organiser." }));
+        else if (saved) box.append(el("p", { class: "msg", text: "This match already has a result. Sending replaces it." }));
         const send = async side => {
           if (state.liveSending) return;
           state.liveSending = m.id; state.liveErr = null; state.drafts[m.id] = sets; renderLive();

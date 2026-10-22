@@ -132,11 +132,8 @@ create policy "anyone updates live counts" on public.docs for update to anon, au
   using (path like 'live/%') with check (path like 'live/%');
 create policy "anyone clears live counts" on public.docs for delete to anon, authenticated
   using (path like 'live/%');
--- results from the public always arrive as 'pending', and a confirmed result can't be overwritten
+-- the public can send a match's result once, as 'pending'; after that only the organiser can change it
 create policy "anyone sends a result" on public.docs for insert to anon, authenticated
-  with check (path like 'scores/%' and data ->> 'status' = 'pending');
-create policy "anyone resends an unconfirmed result" on public.docs for update to anon, authenticated
-  using (path like 'scores/%' and coalesce(data ->> 'status', '') <> 'confirmed')
   with check (path like 'scores/%' and data ->> 'status' = 'pending');
 create policy "organiser sees organisers" on public.admins for select to authenticated
   using (user_id = auth.uid());
