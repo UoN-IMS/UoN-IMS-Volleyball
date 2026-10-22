@@ -1,0 +1,1624 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#DEB406">
+<title>IMS Volleyball Scores</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto+Slab:wght@600;700;800;900&family=Public+Sans:wght@400;500;600;700&display=swap">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/dist/umd/supabase.js"></script>
+<script src="config.js"></script>
+<style>
+/* Layout: one column scoreboard. Sticky header with tabs, week strip, match cards laid out as two-row scoreboards. */
+:root {
+  --bg: #faf6e4;
+  --surface: #ffffff;
+  --ink: #0f2a1d;
+  --muted: #56685c;
+  --line: #e4ddbf;
+  --court: #005F36;
+  --court-ink: #ffffff;
+  --brand-text: #005F36;
+  --ball: #DEB406;
+  --ball-soft: #fbf0c4;
+  --header-bg: #DEB406;
+  --header-ink: #005F36;
+  --win: #00703f;
+  --win-soft: #def0e5;
+  --warn: #855f00;
+  --warn-soft: #fbefcf;
+  --bad: #b3261e;
+  --bad-soft: #fbe5e3;
+  --focus: #005F36;
+  --display: "Roboto Slab", "Rockwell", "Georgia", serif;
+  --body: "Public Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --radius: 10px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #06190f; --surface: #0c2a1c; --ink: #edf3ee; --muted: #9db4a6; --line: #1c4431;
+    --court: #0a7a47; --court-ink: #ffffff; --brand-text: #DEB406; --ball: #DEB406; --ball-soft: #3b3310;
+    --header-bg: #005F36; --header-ink: #DEB406;
+    --win: #63d398; --win-soft: #12382a; --warn: #f0c35a; --warn-soft: #3a2e0e;
+    --bad: #f28b82; --bad-soft: #3d1b1a; --focus: #DEB406; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #06190f; --surface: #0c2a1c; --ink: #edf3ee; --muted: #9db4a6; --line: #1c4431;
+  --court: #0a7a47; --court-ink: #ffffff; --brand-text: #DEB406; --ball: #DEB406; --ball-soft: #3b3310;
+  --header-bg: #005F36; --header-ink: #DEB406;
+  --win: #63d398; --win-soft: #12382a; --warn: #f0c35a; --warn-soft: #3a2e0e;
+  --bad: #f28b82; --bad-soft: #3d1b1a; --focus: #DEB406; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font-family: var(--body); font-size: 15px; line-height: 1.5; }
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--header-bg); }
+button, input, select, textarea { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.wrap { max-width: 860px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+
+header.top { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background-color: var(--header-bg); background-image: radial-gradient(circle, rgba(255,255,255,.22) 1.6px, transparent 2px); background-size: 12px 12px; color: var(--header-ink); box-shadow: 0 3px 0 var(--court); }
+header.top .wrap { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 8px 20px; padding-block: 14px 0; }
+.brand { display: flex; align-items: center; gap: 10px; min-width: 0; padding-bottom: 10px; }
+.brand svg { flex: none; }
+.brand h1 { margin: 0; font-family: var(--display); font-weight: 900; font-size: 28px; letter-spacing: .01em; color: #ffffff; text-shadow: 0 2px 0 rgba(0, 40, 22, .45); text-transform: uppercase; line-height: 1; text-wrap: balance; }
+.brand small { display: block; font-size: 12px; font-weight: 600; letter-spacing: .04em; margin-top: 4px; }
+nav.tabs { display: flex; gap: 4px; }
+nav.tabs button { background: none; border: 0; color: inherit; opacity: .8; padding: 10px 12px 12px; font-family: var(--display); font-size: 15px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; cursor: pointer; border-bottom: 3px solid transparent; }
+nav.tabs button[aria-selected="true"] { opacity: 1; border-bottom-color: var(--header-ink); }
+nav.tabs button:hover { opacity: 1; }
+
+main { padding-block: 20px 60px; }
+.notice { display: flex; gap: 10px; align-items: flex-start; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 14px; color: var(--muted); font-size: 14px; margin-bottom: 16px; }
+.notice strong { color: var(--ink); }
+.notice.warn { background: var(--warn-soft); border-color: transparent; color: var(--ink); }
+
+.weeks { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 4px; min-width: 0; flex: 1 1 320px; scrollbar-width: thin; }
+.weeks button { flex: none; border: 1px solid var(--line); background: var(--surface); border-radius: 999px; padding: 6px 12px; cursor: pointer; font-size: 13px; font-weight: 600; white-space: nowrap; display: inline-flex; gap: 6px; align-items: center; }
+.weeks button[aria-pressed="true"] { background: var(--court); color: var(--court-ink); border-color: var(--court); }
+.weeks .count { font-weight: 500; opacity: .7; font-variant-numeric: tabular-nums; }
+.search { flex: 0 1 220px; min-width: 0; border: 1px solid var(--line); background: var(--surface); border-radius: 8px; padding: 7px 10px; }
+
+.weekhead { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; margin: 6px 0 12px; }
+.weekhead h2 { margin: 0; font-family: var(--display); font-size: 30px; font-weight: 900; text-transform: uppercase; letter-spacing: .01em; line-height: 1.1; }
+.weekhead .meta { color: var(--muted); font-size: 14px; font-variant-numeric: tabular-nums; }
+.progress { height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; margin-bottom: 18px; }
+.progress span { display: block; height: 100%; background: var(--ball); }
+
+.divlabel { font-family: var(--display); font-size: 15px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin: 20px 0 8px; }
+.matches { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 360px), 1fr)); gap: 12px; }
+.match { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 0 14px 12px; display: grid; gap: 8px; min-width: 0; overflow: hidden; }
+.match.done { border-color: color-mix(in srgb, var(--win) 35%, var(--line)); }
+.mhead { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 12px; letter-spacing: .03em; margin: 0 -14px 4px; padding: 7px 14px 7px 18px; min-height: 34px; background: var(--court); color: var(--court-ink); box-shadow: inset 5px 0 0 #3f9c6c; }
+.mhead .where { text-transform: uppercase; font-weight: 600; }
+.board { display: grid; grid-template-columns: minmax(0, 1fr) repeat(3, 44px); gap: 6px 6px; align-items: center; }
+.board .colh { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); text-align: center; font-weight: 600; }
+.board .colh small { display: block; font-weight: 400; letter-spacing: 0; text-transform: none; opacity: .8; }
+.team { font-weight: 600; min-width: 0; overflow-wrap: anywhere; display: flex; align-items: center; gap: 6px; line-height: 1.25; }
+.team.won { color: var(--win); }
+.team .tag { flex: none; font-family: var(--display); font-size: 12px; font-weight: 700; letter-spacing: .06em; background: var(--win-soft); color: var(--win); border-radius: 4px; padding: 1px 6px; }
+.board input { width: 44px; height: 40px; text-align: center; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); font-family: var(--display); font-size: 22px; font-weight: 600; font-variant-numeric: tabular-nums; padding: 0; -moz-appearance: textfield; }
+.board input::-webkit-outer-spin-button, .board input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.board input.setwon { background: var(--ball-soft); border-color: var(--ball); }
+.board input:disabled { opacity: 1; border-color: transparent; }
+.board input.dim:disabled { opacity: .35; }
+.mfoot { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; min-height: 32px; }
+.result { font-size: 13px; color: var(--muted); }
+.result b { color: var(--ink); }
+.result.err { color: var(--bad); }
+.result.warn { color: var(--warn); }
+.actions { display: flex; gap: 6px; }
+.btn { border: 1px solid var(--line); background: var(--surface); border-radius: 7px; padding: 6px 12px; cursor: pointer; font-weight: 600; font-size: 13px; }
+.btn.primary { background: var(--court); border-color: var(--court); color: var(--court-ink); }
+.btn.primary:disabled { opacity: .45; cursor: not-allowed; }
+.btn.ghost { border-color: transparent; background: none; color: var(--muted); }
+.btn.danger { color: var(--bad); }
+.btn:hover:not(:disabled) { filter: brightness(1.05); }
+.who { font-size: 12px; color: var(--muted); }
+
+.standings h3 { font-family: var(--display); font-size: 22px; text-transform: uppercase; letter-spacing: .04em; margin: 24px 0 8px; }
+.tablewrap { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); }
+table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; font-size: 14px; }
+th, td { padding: 9px 10px; text-align: right; white-space: nowrap; }
+th { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 600; border-bottom: 1px solid var(--line); }
+td { border-bottom: 1px solid var(--line); }
+tr:last-child td { border-bottom: 0; }
+th.l, td.l { text-align: left; }
+td.team-c { font-weight: 600; white-space: normal; min-width: 140px; }
+td.pos { color: var(--muted); width: 32px; }
+td.pts { font-family: var(--display); font-size: 20px; font-weight: 700; }
+th.pts { color: var(--ink); }
+.legend { color: var(--muted); font-size: 13px; margin-top: 10px; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 12px; }
+.chip { font-size: 12px; border-radius: 999px; padding: 3px 10px; background: var(--surface); border: 1px solid var(--line); }
+.chip b { font-family: var(--display); font-size: 14px; }
+
+.setup section { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; margin-bottom: 16px; display: grid; gap: 12px; }
+.setup h3 { margin: 0; font-family: var(--display); font-size: 22px; text-transform: uppercase; letter-spacing: .04em; }
+.setup p { margin: 0; color: var(--muted); font-size: 14px; max-width: 65ch; }
+.setup textarea { width: 100%; min-height: 160px; border: 1px solid var(--line); border-radius: 8px; padding: 10px; background: var(--bg); font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 13px; resize: vertical; }
+.setup label.field { display: grid; gap: 4px; font-size: 13px; font-weight: 600; }
+.setup input[type=text] { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; background: var(--bg); max-width: 420px; }
+.row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.drop { border: 2px dashed var(--line); border-radius: 8px; padding: 14px; text-align: center; color: var(--muted); font-size: 14px; }
+.drop.over { border-color: var(--court); background: var(--bg); }
+.drop label { color: var(--brand-text); font-weight: 600; cursor: pointer; text-decoration: underline; }
+.radios { display: flex; gap: 16px; flex-wrap: wrap; font-size: 14px; }
+.msg { font-size: 13px; }
+.msg.ok { color: var(--win); }
+.msg.err { color: var(--bad); }
+.warnlist { margin: 0; padding-left: 18px; color: var(--warn); font-size: 13px; }
+.preview td, .preview th { font-size: 13px; padding: 6px 8px; }
+.weeklist { display: grid; gap: 6px; }
+.weeklist .row { justify-content: space-between; border-bottom: 1px solid var(--line); padding-bottom: 6px; }
+.empty { text-align: center; padding: 40px 16px; color: var(--muted); background: var(--surface); border: 1px dashed var(--line); border-radius: var(--radius); }
+.empty h2 { font-family: var(--display); text-transform: uppercase; color: var(--ink); margin: 0 0 6px; font-size: 26px; }
+.empty p { max-width: 46ch; margin: 0 auto; }
+
+.tools { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+.tools .search { flex: 1 1 220px; }
+.weeks { margin-bottom: 14px; align-items: center; }
+.weeks.muted button[aria-pressed="true"] { background: var(--surface); color: var(--ink); border-color: var(--line); }
+.weeks button.now::after { content: "This Sunday"; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; background: var(--ball); color: #0f2a1d; border-radius: 4px; padding: 1px 5px; }
+.stagemark { flex: none; font-family: var(--display); font-weight: 700; font-size: 13px; letter-spacing: .08em; text-transform: uppercase; color: var(--brand-text); padding: 0 2px 0 8px; }
+.stagemark:first-child { padding-left: 0; }
+.searchnote { color: var(--muted); font-size: 14px; margin: 0 0 8px; }
+.weekhead.compact { margin-top: 22px; }
+.weekhead.compact h2 { font-size: 22px; }
+.eyebrow { font-size: 11px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--brand-text); }
+.pill { font-size: 11px; font-weight: 700; letter-spacing: .04em; border-radius: 999px; padding: 2px 8px; white-space: nowrap; }
+.pill.ok { background: var(--win-soft); color: var(--win); }
+.pill.wait { background: var(--ball-soft); color: var(--warn); }
+.pill.bad { background: var(--bad-soft); color: var(--bad); }
+.match.st-confirmed { border-color: color-mix(in srgb, var(--win) 40%, var(--line)); }
+.match.st-disputed { border-color: color-mix(in srgb, var(--bad) 50%, var(--line)); }
+.match.mine { box-shadow: 0 0 0 3px var(--ball); border-color: transparent; }
+.mfoot-wrap { display: grid; gap: 8px; }
+.sidepick { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 13px; background: var(--bg); border-radius: 8px; padding: 8px; }
+.sidepick .actions { margin-left: auto; }
+.statusrow { display: flex; gap: 8px; align-items: center; justify-content: space-between; flex-wrap: wrap; border-top: 1px solid var(--line); padding-top: 8px; }
+.statusrow .who { flex: 1 1 180px; min-width: 0; }
+.who q { font-style: italic; color: var(--ink); margin-left: 4px; }
+.note-in { flex: 1 1 200px; min-width: 0; border: 1px solid var(--line); border-radius: 7px; padding: 6px 9px; background: var(--surface); }
+.stages { list-style: none; margin: 0 0 18px; padding: 0; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }
+.stage { width: 100%; height: 100%; text-align: left; border: 1px solid var(--line); background: var(--surface); border-radius: 8px; padding: 10px; cursor: pointer; display: grid; gap: 2px; align-content: start; position: relative; }
+.stage::before { content: ""; position: absolute; left: 10px; right: 10px; top: 0; height: 3px; border-radius: 0 0 3px 3px; background: var(--line); }
+.stage.s-done::before { background: var(--win); }
+.stage.s-live::before { background: var(--ball); }
+.stage[aria-pressed="true"] { border-color: var(--brand-text); box-shadow: inset 0 0 0 1px var(--brand-text); }
+.sname { font-family: var(--display); font-weight: 700; font-size: 18px; text-transform: uppercase; letter-spacing: .03em; line-height: 1.1; }
+.ssub { font-size: 12px; color: var(--muted); line-height: 1.3; }
+.sstate { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin-top: 4px; }
+.s-live .sstate { color: var(--warn); }
+.s-done .sstate { color: var(--win); }
+.chip.quiet { border-style: dashed; color: var(--muted); }
+tr.me td { background: var(--ball-soft); }
+.form { display: inline-flex; gap: 3px; }
+.form i { font-style: normal; font-size: 11px; font-weight: 700; width: 18px; height: 18px; display: inline-grid; place-items: center; border-radius: 4px; }
+.form .fw { background: var(--win-soft); color: var(--win); }
+.form .fl { background: var(--bad-soft); color: var(--bad); }
+.bracket { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 1fr)); gap: 10px; }
+.bmatch { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+.bhead { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); padding: 6px 10px; border-bottom: 1px solid var(--line); }
+.brow { display: flex; justify-content: space-between; gap: 8px; padding: 8px 10px; font-weight: 600; }
+.brow + .brow { border-top: 1px solid var(--line); }
+.brow.win { color: var(--win); }
+.brow.out { color: var(--muted); font-weight: 500; }
+.bsets { font-family: var(--display); font-size: 20px; font-variant-numeric: tabular-nums; }
+.bnote { font-size: 12px; color: var(--warn); padding: 0 10px 8px; }
+.mnote { font-size: 12px; color: var(--warn); background: var(--warn-soft); border-radius: 6px; padding: 4px 8px; }
+td.next { font-size: 12px; color: var(--muted); font-weight: 600; }
+.grow { flex: 1 1 200px; min-width: 0; }
+.foot { text-align: center; color: var(--muted); font-size: 13px; margin-top: 32px; }
+.weeklist select { max-width: 230px; }
+@media (max-width: 640px) {
+  .stages { grid-template-columns: repeat(5, minmax(120px, 1fr)); overflow-x: auto; padding-bottom: 4px; }
+}
+
+/* live scorer */
+.livebar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+.liveset { font-family: var(--display); font-weight: 900; font-size: 20px; text-transform: uppercase; }
+.livesets { display: flex; gap: 6px; margin-left: auto; }
+.courts { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.court { position: relative; border-radius: 14px; overflow: hidden; }
+.court .tap { width: 100%; min-height: 46vh; border: 0; cursor: pointer; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; padding: 18px 10px 80px; touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+.court.c0 .tap { background: var(--ball); color: #00361f; }
+.court.c1 .tap { background: #005F36; color: #ffffff; }
+.court .tap:active:not(:disabled) { filter: brightness(.92); }
+.court .tap:disabled { cursor: default; opacity: .75; }
+.tname { font-family: var(--display); font-weight: 800; font-size: 17px; text-transform: uppercase; text-align: center; line-height: 1.15; overflow-wrap: anywhere; }
+.tscore { font-family: var(--display); font-weight: 900; font-size: clamp(72px, 24vw, 150px); line-height: 1; font-variant-numeric: tabular-nums; }
+.tsets { display: flex; gap: 6px; align-items: center; min-height: 20px; }
+.tsets i { width: 12px; height: 12px; border-radius: 50%; border: 2px solid currentColor; opacity: .7; }
+.tsets i.on { background: currentColor; opacity: 1; }
+.tsets b { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; margin-left: 6px; }
+.court .minus { position: absolute; left: 10px; right: 10px; bottom: 10px; height: 58px; border: 0; border-radius: 12px; font-family: var(--display); font-weight: 900; font-size: 26px; background: rgba(0, 0, 0, .2); color: inherit; cursor: pointer; touch-action: manipulation; }
+.court .minus:active:not(:disabled) { background: rgba(0, 0, 0, .32); }
+.court.c0 .minus { color: #00361f; }
+.court.c1 .minus { color: #ffffff; }
+.court .minus:disabled { opacity: .35; }
+.liveover { margin-top: 12px; background: var(--surface); border: 2px solid var(--ball); border-radius: var(--radius); padding: 14px; display: grid; gap: 10px; }
+.liveover b { font-family: var(--display); font-size: 19px; }
+.sidebtns { display: grid; gap: 8px; }
+.btn.big { min-height: 48px; font-size: 16px; }
+.btn.savedok { color: var(--win); border-color: var(--win); }
+.liveover.remote { margin: 0 0 10px; border-color: var(--court); }
+.livetools { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+.livetools .btn { flex: 1 1 0; min-height: 44px; white-space: nowrap; padding: 6px 8px; font-size: 13px; }
+.picklist { display: grid; gap: 8px; }
+.pick { text-align: left; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 14px; display: grid; gap: 2px; cursor: pointer; position: relative; }
+.pick.mine { box-shadow: 0 0 0 3px var(--ball); border-color: transparent; }
+.pick .pill { position: absolute; right: 12px; top: 12px; }
+.pwhen { font-size: 12px; color: var(--muted); text-transform: uppercase; font-weight: 600; letter-spacing: .04em; }
+.pteams { font-weight: 700; font-size: 16px; padding-right: 90px; }
+
+
+.fullbtn { margin-left: auto; }
+.livesets + .fullbtn { margin-left: 0; }
+#view-live.full { position: fixed; inset: 0; z-index: 50; background: var(--bg); display: flex; flex-direction: column; gap: 8px; padding: max(8px, env(safe-area-inset-top, 0px)) max(10px, env(safe-area-inset-right, 0px)) max(8px, env(safe-area-inset-bottom, 0px)) max(10px, env(safe-area-inset-left, 0px)); overflow: hidden; }
+#view-live.full .livebar { margin: 0; flex-wrap: nowrap; }
+#view-live.full .livesets { margin-left: auto; overflow-x: auto; min-width: 0; }
+#view-live.full .courts { flex: 1 1 auto; min-height: 0; }
+#view-live.full .court .tap { min-height: 0; height: 100%; }
+#view-live.full .legend { display: none; }
+#view-live.full .livetools { margin-top: 0; flex-wrap: nowrap; }
+#view-live.full .livetools .btn { min-height: 44px; }
+#view-live.full .liveover { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(92vw, 440px); max-height: 90%; overflow: auto; z-index: 2; margin: 0; box-shadow: 0 12px 40px rgba(0, 0, 0, .35); }
+#view-live.full .tscore { font-size: clamp(80px, min(28vw, 30vh), 260px); }
+@media (orientation: landscape) and (max-height: 520px) {
+  .courts { gap: 8px; }
+  .court .tap { min-height: 70vh; padding: 10px 10px 64px; gap: 2px; }
+  .tscore { font-size: clamp(60px, 34vh, 220px); }
+  .tname { font-size: 15px; }
+  .court .minus { height: 48px; font-size: 22px; }
+  .liveset { font-size: 17px; }
+  #view-live.full .tscore { font-size: clamp(60px, 36vh, 240px); }
+  #view-live.full .livetools .btn, #view-live.full .livebar .btn { min-height: 38px; padding: 4px 12px; }
+}
+/* phones: app-style bottom tabs, bigger targets */
+@media (max-width: 640px) {
+  header.top .wrap { padding-block: 10px 10px; }
+  .brand { padding-bottom: 0; }
+  .brand small { display: none; }
+  nav.tabs { position: fixed; left: 0; right: 0; bottom: 0; z-index: 20; display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 0; background: var(--court); color: #ffffff; padding: 0 env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px); box-shadow: 0 -2px 0 var(--ball); }
+  nav.tabs button { font-size: 12px; letter-spacing: .02em; white-space: nowrap; padding: 15px 2px 15px; border-bottom: 0; border-top: 4px solid transparent; opacity: .85; }
+  nav.tabs button[aria-selected="true"] { border-top-color: var(--ball); border-bottom-color: transparent; color: var(--ball); }
+  main { padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px)); }
+  .tools { display: grid; grid-template-columns: 1fr; }
+  .search { padding: 11px 12px; font-size: 16px; }
+  .weeks button { padding: 9px 14px; }
+  .board { grid-template-columns: minmax(0, 1fr) repeat(3, 52px); gap: 8px 6px; }
+  .board input { width: 52px; height: 50px; font-size: 24px; }
+  .team { font-size: 15px; }
+  .mfoot { flex-direction: column; align-items: stretch; }
+  .mfoot .actions { justify-content: stretch; }
+  .mfoot .actions .btn { flex: 1 1 0; min-height: 44px; font-size: 15px; }
+  .statusrow .actions { width: 100%; }
+  .statusrow .actions .btn { flex: 1 1 0; min-height: 44px; }
+  .sidepick .btn { flex: 1 1 100%; min-height: 44px; }
+  .weekhead h2 { font-size: 26px; }
+  .foot { margin-bottom: 8px; }
+  body.in-live .court .tap { min-height: 52vh; }
+}
+@media (max-width: 520px) {
+  .brand h1 { font-size: 22px; }
+  nav.tabs button { padding: 8px 9px 10px; font-size: 15px; }
+  th, td { padding: 8px 6px; }
+  .hide-sm { display: none; }
+}
+@media (prefers-reduced-motion: no-preference) { .progress span { transition: width .4s ease; } }
+.orgbox { text-align: center; margin: 6px 0 28px; font-size: 13px; color: var(--muted); }
+.orgbox .linkbtn { background: none; border: 0; color: var(--muted); text-decoration: underline; font: inherit; cursor: pointer; padding: 6px; }
+.orgbox form { display: grid; gap: 8px; max-width: 320px; margin: 10px auto 0; text-align: left; }
+.orgbox input { font: inherit; font-size: 16px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--ink); }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="wrap">
+    <div class="brand">
+      <svg width="34" height="34" viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="14" fill="#ffffff" stroke="#005F36" stroke-width="2"/><path d="M16 2c-2 7 0 13 6 17M30 16c-7-2-13 0-17 6M6 6c5 4 6 11 4 20" fill="none" stroke="#005F36" stroke-width="2.2" stroke-linecap="round"/></svg>
+      <div><h1 id="leagueName">IMS Volleyball</h1><small id="leagueSub">Sunday league · scores and standings</small></div>
+    </div>
+    <nav class="tabs" role="tablist">
+      <button role="tab" id="tab-scores" aria-selected="true" data-view="scores">Fixtures</button>
+      <button role="tab" id="tab-live" aria-selected="false" data-view="live">Live score</button>
+      <button role="tab" id="tab-standings" aria-selected="false" data-view="standings">Standings</button>
+      <button role="tab" id="tab-setup" aria-selected="false" data-view="setup" hidden>Setup</button>
+    </nav>
+  </div>
+</header>
+
+<main class="wrap">
+  <div id="banner"></div>
+  <div id="view-scores"></div>
+  <div id="view-live" class="live" hidden></div>
+  <div id="view-standings" class="standings" hidden></div>
+  <div id="view-setup" class="setup" hidden>
+    <section>
+      <h3>League name</h3>
+      <div class="row">
+        <input type="text" id="nameInput" placeholder="IMS Volleyball" aria-label="League name">
+        <button class="btn" id="saveName">Save name</button>
+        <span class="msg" id="nameMsg"></span>
+      </div>
+    </section>
+    <section>
+      <h3>Import fixtures</h3>
+      <p>Copy the fixture rows from Excel and paste them below, or upload the .xlsx or .csv file. Header rows like Week, Date, Time, Court, Division, Home, Away are recognised, and so are cells like “Spikers vs Net Results”. If a sheet has no week column, each sheet tab or date becomes its own week.</p>
+      <div class="drop" id="drop">Drop an Excel or CSV file here, or <label for="fileInput">choose a file</label><input type="file" id="fileInput" accept=".xlsx,.xls,.csv,.tsv,.txt" hidden></div>
+      <textarea id="pasteBox" placeholder="Paste fixtures from Excel here"></textarea>
+      <div class="row">
+        <button class="btn" id="sampleBtn">Fill in an example</button>
+        <button class="btn ghost" id="clearPaste">Clear</button>
+      </div>
+      <div id="previewOut"></div>
+    </section>
+    <section>
+      <h3>Weeks on the site</h3>
+      <div id="weekList" class="weeklist"></div>
+    </section>
+    <section>
+      <h3>Sharing with captains</h3>
+      <p>Just send the site link. Anyone with it can see fixtures and standings and score a match with Live score, then send the result in. Results they send count straight away and show as “To check” until you confirm them. Only you, signed in, can type or change scores, confirm or remove them, and change fixtures. A confirmed score can't be overwritten from Live score.</p>
+    </section>
+  </div>
+  <p class="foot">All games at DRSV · Hall C courts 1–3 · Hall D courts 4–6</p>
+  <div class="orgbox" id="orgbox"></div>
+</main>
+
+<script>
+/* ---------- pure logic: parsing and scoring ---------- */
+const TARGETS = [25, 25, 15];
+
+function clean(s) { return String(s == null ? "" : s).replace(/ /g, " ").replace(/\s+/g, " ").trim(); }
+function teamKey(s) { return clean(s).toLowerCase(); }
+function slug(s) { return clean(s).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60) || "x"; }
+
+function parseCsvLine(line, sep) {
+  const out = []; let cur = "", q = false;
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i];
+    if (q) { if (c === '"') { if (line[i + 1] === '"') { cur += '"'; i++; } else q = false; } else cur += c; }
+    else if (c === '"') q = true;
+    else if (c === sep) { out.push(cur); cur = ""; }
+    else cur += c;
+  }
+  out.push(cur); return out;
+}
+function textToRows(text) {
+  const lines = String(text).replace(/\r\n?/g, "\n").split("\n");
+  const hasTab = lines.some(l => l.includes("\t"));
+  const hasSemi = !hasTab && lines.filter(l => l.includes(";")).length > lines.filter(l => l.includes(",")).length;
+  const sep = hasTab ? "\t" : hasSemi ? ";" : ",";
+  return lines.map(l => (hasTab ? l.split("\t") : parseCsvLine(l, sep)).map(clean));
+}
+
+const RX = {
+  weekMark: /^(week|wk|round|rd|matchday|match day|gameweek|game week|game day|gameday)\s*#?\s*(\d+)\b/i,
+  date: /^(\d{1,2}[\/.\-]\d{1,2}([\/.\-]\d{2,4})?|\d{4}-\d{2}-\d{2}.*|((mon|tue|wed|thu|fri|sat|sun)[a-z]*,?\s+)?\d{1,2}(st|nd|rd|th)?\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?(\s+\d{2,4})?|((mon|tue|wed|thu|fri|sat|sun)[a-z]*,?\s+)?(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+\d{1,2}(st|nd|rd|th)?(,?\s+\d{2,4})?)$/i,
+  time: /^(\d{1,2}[:.]\d{2}(\s*[ap]\.?m\.?)?|\d{1,2}\s*[ap]\.?m\.?)(\s*[-–]\s*\d{1,2}([:.]\d{2})?\s*([ap]\.?m\.?)?)?$/i,
+  court: /^(court|ct\.?|crt)\s*#?\s*\w+$/i,
+  division: /^(competitive|casual|comp|social|rec|recreational|div(ision)?\s*\w+|(competitive|casual|social|recreational)\s+(league|division|div))$/i,
+  sep: /^(v|vs|vs\.|v\.|versus|@|-|–|x)$/i,
+  vs: /^(.+?)\s+(?:vs\.?|v\.?|versus|@)\s+(.+)$/i,
+  dash: /^(.+?)\s+[-–]\s+(.+)$/,
+  number: /^\d+(\.\d+)?$/
+};
+const HEAD = {
+  week: /^(week|wk|round|rd|matchday|match day|gameweek|game week|game day|gameday|wk no\.?|week no\.?|week #)$/i,
+  date: /^(date|day|match date|game date)$/i,
+  time: /^(time|start|start time|kick ?off|slot|time slot)$/i,
+  court: /^(court|venue|location|pitch|ct|crt|court no\.?)$/i,
+  division: /^(div|div\.|division|league|pool|group|tier|level|conference|category)$/i,
+  home: /^(home|home team|team ?a|team ?1|team one|side ?a|team)$/i,
+  away: /^(away|away team|team ?b|team ?2|team two|side ?b|visitor|visitors|opponent|opposition)$/i,
+  match: /^(match|matchup|match-up|fixture|fixtures|game|teams|teams playing)$/i,
+  stage: /^(stage|phase|round type|competition stage)$/i,
+  sep: /^(v|vs|vs\.|versus)$/i
+};
+
+function findHeader(rows) {
+  for (let i = 0; i < Math.min(rows.length, 12); i++) {
+    const r = rows[i]; const map = {}; let hits = 0;
+    r.forEach((c, j) => {
+      if (!c) return;
+      for (const k of ["stage", "week", "date", "time", "court", "division", "match", "away", "home"]) {
+        if (HEAD[k].test(c)) {
+          if (k === "home" && map.home != null && map.away == null) { map.away = j; hits++; }
+          else if (map[k] == null) { map[k] = j; hits++; }
+          return;
+        }
+      }
+    });
+    if ((map.home != null && map.away != null) || map.match != null) {
+      if (hits >= 2 || map.match != null) return { index: i, map };
+    }
+  }
+  return null;
+}
+
+function splitVs(c) {
+  let m = c.match(RX.vs); if (m) return [m[1], m[2]];
+  m = c.match(RX.dash); if (m && !RX.date.test(c) && !RX.time.test(c)) return [m[1], m[2]];
+  return null;
+}
+
+function classify(c) {
+  if (!c) return "empty";
+  if (RX.weekMark.test(c)) return "week";
+  if (RX.time.test(c)) return "time";
+  if (RX.date.test(c)) return "date";
+  if (RX.sep.test(c)) return "sep";
+  if (RX.court.test(c)) return "court";
+  if (RX.division.test(c)) return "division";
+  if (RX.number.test(c)) return "number";
+  if (RX.vs.test(c)) return "pair";
+  if (/^(fixtures?|schedule|results?|score|scores|notes?|bye)$/i.test(c)) return "junk";
+  return "text";
+}
+
+const STAGES = [
+  { id: "group", label: "Group stage", short: "Group", sub: "6 groups of 6 · 11 Oct – 8 Nov" },
+  { id: "r1", label: "Round 1", short: "R1", sub: "Sorted divisions · from 15 Nov" },
+  { id: "r2", label: "Round 2", short: "R2", sub: "Top 2 up, bottom 2 down · from Feb" },
+  { id: "ko", label: "Knockouts", short: "KO", sub: "Top 8: quarter-finals and semi-finals" },
+  { id: "final", label: "Finals", short: "Final", sub: "Championship match" }
+];
+const STAGE_BY_ID = Object.fromEntries(STAGES.map(x => [x.id, x]));
+function stageId(t) {
+  t = clean(t).toLowerCase(); if (!t) return "";
+  if (/quarter|semi|knock|\bko\b|\bqf|\bsf|play-?off|top ?8|last ?8/.test(t)) return "ko";
+  if (/final/.test(t)) return "final";
+  if (/round ?(2|two)|\br2\b|second round/.test(t)) return "r2";
+  if (/round ?(1|one)|\br1\b|first round/.test(t)) return "r1";
+  if (/group|placement|pool stage|seeding/.test(t)) return "group";
+  return "";
+}
+const STAGE_SECTION = /(stage|divisions|group|placement|knock|quarter|semi|final|play-?off|top ?8)/i;
+
+function weekLabel(v) {
+  const c = clean(v); if (!c) return "";
+  if (RX.number.test(c)) return "Week " + Number(c);
+  const m = c.match(RX.weekMark); if (m) return "Week " + Number(m[2]);
+  return c;
+}
+
+/* rows: array of arrays of strings. opts.defaultWeek: label for rows with no week info (e.g. sheet name). */
+function parseFixtures(rows, opts = {}) {
+  rows = rows.map(r => r.map(clean));
+  const warnings = []; const out = [];
+  const head = findHeader(rows);
+  let cur = { week: "", date: "", time: "", court: "", division: "", stage: "" };
+  const start = head ? head.index + 1 : 0;
+  for (let i = start; i < rows.length; i++) {
+    const r = rows[i];
+    if (!r.some(Boolean)) continue;
+    let home = "", away = "", rec = { week: "", date: "", time: "", court: "", division: "", stage: "" };
+    // a section row such as "Round 1 Divisions" or "Quarter-finals"
+    const lone = r.filter(Boolean);
+    if (lone.length <= 2 && lone.some(c => STAGE_SECTION.test(c) && stageId(c)) && !lone.some(c => RX.vs.test(c))) {
+      const c = lone.find(c => STAGE_SECTION.test(c) && stageId(c));
+      cur.stage = stageId(c); cur.week = ""; continue;
+    }
+    if (head) {
+      const m = head.map; const get = k => (m[k] != null ? r[m[k]] || "" : "");
+      rec = { week: get("week"), date: get("date"), time: get("time"), court: get("court"), division: get("division"), stage: stageId(get("stage")) };
+      if (m.match != null && get("match")) { const p = splitVs(get("match")); if (p) [home, away] = p; }
+      if (!home && m.home != null) { home = get("home"); away = get("away"); if (home && !away) { const p = splitVs(home); if (p) [home, away] = p; } }
+      if (!home || !away) {
+        const wk = r.find(c => RX.weekMark.test(c));
+        if (wk) { cur = { ...cur, week: weekLabel(wk), date: rec.date || "" }; }
+        else if (r.filter(Boolean).length === 1 && RX.division.test(r.find(Boolean))) cur.division = r.find(Boolean);
+        else if (r.filter(Boolean).length === 1 && RX.date.test(r.find(Boolean))) cur.date = r.find(Boolean);
+        continue;
+      }
+    } else {
+      const teams = [];
+      for (const c of r) {
+        const k = classify(c);
+        if (k === "week") rec.week = rec.week || c;
+        else if (k === "date") rec.date = rec.date || c;
+        else if (k === "time") rec.time = rec.time || c;
+        else if (k === "court") rec.court = rec.court || c;
+        else if (k === "division") rec.division = rec.division || c;
+        else if (k === "pair") { const p = splitVs(c); if (p) teams.push(...p); }
+        else if (k === "text") { const p = teams.length === 0 ? splitVs(c) : null; if (p && !r.some(x => RX.sep.test(x))) teams.push(...p); else teams.push(c); }
+      }
+      if (teams.length < 2) {
+        if (rec.week) cur = { ...cur, week: weekLabel(rec.week), date: rec.date || "" };
+        else if (rec.date && !teams.length) cur.date = rec.date;
+        if (rec.division && !teams.length) cur.division = rec.division;
+        continue;
+      }
+      if (teams.length > 2) warnings.push(`Row ${i + 1}: found more than two names, used “${teams[0]}” and “${teams[1]}”.`);
+      [home, away] = teams;
+    }
+    // fill down blanks (merged cells in Excel paste come through empty)
+    for (const k of ["week", "date", "division", "stage"]) { if (rec[k]) { if (k === "week") rec[k] = weekLabel(rec[k]); cur[k] = rec[k]; } else rec[k] = cur[k]; }
+    if (!rec.week && rec.date) rec.week = rec.date;
+    if (!rec.week && opts.defaultWeek) rec.week = opts.defaultWeek;
+    home = clean(home); away = clean(away);
+    if (teamKey(home) === teamKey(away)) { warnings.push(`Row ${i + 1}: “${home}” is listed against itself, skipped.`); continue; }
+    out.push({ stage: rec.stage || opts.defaultStage || "", week: rec.week, date: rec.date && rec.date !== rec.week ? rec.date : "", time: rec.time, court: rec.court, division: rec.division, home, away, row: i + 1 });
+  }
+  out.forEach(m => { if (!m.week && m.stage && !out.some(o => o.stage === m.stage && o.week)) m.week = STAGE_BY_ID[m.stage].label; });
+  // no week info at all: split into blocks of 18 (one Sunday each)
+  if (out.length && out.every(m => !m.week)) {
+    const per = opts.perWeek || 18;
+    out.forEach((m, i) => { m.week = "Week " + (Math.floor(i / per) + 1); });
+    if (out.length > per) warnings.push(`No week or date column found, so every ${per} matches became one week. Add a Week column if that is wrong.`);
+  } else out.forEach(m => { if (!m.week) m.week = "Unassigned"; });
+  return { matches: out, warnings, header: head ? Object.keys(head.map) : null };
+}
+
+function groupWeeks(matches) {
+  const weeks = []; const byLabel = new Map();
+  for (const m of matches) {
+    const key = (m.stage || "") + "|" + m.week;
+    let w = byLabel.get(key);
+    if (!w) { w = { label: m.week, stage: m.stage || "", date: m.date || "", matches: [] }; byLabel.set(key, w); weeks.push(w); }
+    if (!w.date && m.date) w.date = m.date;
+    w.matches.push(m);
+  }
+  const warnings = [];
+  for (const w of weeks) {
+    const seen = new Map(); const ids = new Set();
+    w.id = "w-" + (w.stage ? w.stage + "-" : "") + slug(w.label);
+    w.matches = w.matches.map((m, i) => {
+      for (const t of [m.home, m.away]) { const k = teamKey(t); if (seen.has(k)) warnings.push(`${w.label}: “${t}” plays more than once.`); seen.set(k, 1); }
+      let id = w.id + "--" + slug(m.home) + "--" + slug(m.away);
+      while (ids.has(id)) id += "-2"; ids.add(id);
+      return { id, home: m.home, away: m.away, time: m.time || "", court: m.court || "", division: m.division || "", date: m.date && m.date !== w.date ? m.date : "" };
+    });
+  }
+  return { weeks, warnings };
+}
+
+/* sets: [[a,b],[a,b],[a,b]] with numbers or null */
+/* why a finished set's score is impossible, or "" if it's fine */
+function setError(a, b, t) {
+  const hi = Math.max(a, b), lo = Math.min(a, b);
+  if (hi < t) return `the winner needs ${t} points.`;
+  if (hi - lo < 2) return `must be won by 2 points.`;
+  if (hi > t && hi - lo !== 2) return `past ${t} it ends as soon as a team is 2 ahead, e.g. ${hi}–${hi - 2}.`;
+  return "";
+}
+function setOver(a, b, t) { return Math.max(a, b) >= t && Math.abs(a - b) >= 2; }
+
+function evalScore(sets) {
+  const res = { complete: false, error: "", warnings: [], setsA: 0, setsB: 0, winner: null, ptsA: 0, ptsB: 0, setWinners: [] };
+  const s = [0, 1, 2].map(i => (sets && sets[i]) || [null, null]);
+  const filled = s.map(([a, b]) => a != null && b != null);
+  const partial = s.map(([a, b]) => (a == null) !== (b == null));
+  if (partial.some(Boolean)) { res.error = `Set ${partial.indexOf(true) + 1} needs both scores.`; return res; }
+  if (!filled[0] && !filled[1] && !filled[2]) return res;
+  for (let i = 0; i < 3; i++) {
+    if (!filled[i]) { res.setWinners.push(null); continue; }
+    const [a, b] = s[i];
+    if (![a, b].every(n => Number.isInteger(n) && n >= 0 && n < 100)) { res.error = `Set ${i + 1}: use whole numbers.`; return res; }
+    if (a === b) { res.error = `Set ${i + 1} can't end level.`; return res; }
+    const hi = Math.max(a, b), lo = Math.min(a, b), t = TARGETS[i];
+    const err = setError(a, b, t);
+    if (err) { res.error = `Set ${i + 1}: ${err}`; return res; }
+    res.setWinners.push(a > b ? "A" : "B");
+  }
+  if (!filled[0] || !filled[1]) { res.error = "Enter sets 1 and 2."; return res; }
+  const w = res.setWinners;
+  const a2 = w.slice(0, 2).filter(x => x === "A").length;
+  if (a2 === 1) {
+    if (!filled[2]) { res.error = "It's 1–1, so enter set 3."; return res; }
+  } else if (filled[2]) { res.error = `Set 3 isn't played after a ${a2 === 2 ? "2–0" : "0–2"}. Clear it.`; return res; }
+  res.setsA = w.filter(x => x === "A").length; res.setsB = w.filter(x => x === "B").length;
+  res.winner = res.setsA > res.setsB ? "A" : "B";
+  const straight = Math.min(res.setsA, res.setsB) === 0;
+  const [pw, pl] = straight ? [3, 0] : [2, 1];
+  res.ptsA = res.winner === "A" ? pw : pl; res.ptsB = res.winner === "B" ? pw : pl;
+  res.complete = true; return res;
+}
+
+const DIVISIONS = ["Premier A", "Premier B", "Division 3", "Division 4", "Division 5", "Division 6"];
+
+/* A stored score either has set-by-set numbers (sets) or only the set count (result: [home, away]), e.g. imported from Spawtz. */
+function scoreResult(sc) {
+  if (!sc) return evalScore(null);
+  if (Array.isArray(sc.result) && !(sc.sets && sc.sets.some(Boolean))) {
+    const [a, b] = sc.result.map(Number);
+    const ok = [a, b].every(Number.isInteger) && Math.max(a, b) === 2 && Math.min(a, b) <= 1;
+    const res = { complete: ok, error: ok ? "" : "Bad result", warnings: [], setsA: a, setsB: b, winner: ok ? (a > b ? "A" : "B") : null, ptsA: 0, ptsB: 0, setWinners: [], setsOnly: true };
+    if (ok) { const straight = Math.min(a, b) === 0; const [pw, pl] = straight ? [3, 0] : [2, 1]; res.ptsA = a > b ? pw : pl; res.ptsB = b > a ? pw : pl; }
+    return res;
+  }
+  return evalScore(sc.sets);
+}
+
+function computeStandings(weeks, scores) {
+  const teams = new Map();
+  const T = (name, div) => {
+    const k = teamKey(name);
+    if (!teams.has(k)) teams.set(k, { name: clean(name), division: div || "", form: [], P: 0, W: 0, L: 0, w20: 0, w21: 0, l21: 0, l20: 0, SW: 0, SL: 0, PF: 0, PA: 0, Pts: 0 });
+    const t = teams.get(k); if (!t.division && div) t.division = div; return t;
+  };
+  for (const w of weeks) for (const m of w.matches || []) {
+    const a = T(m.home, m.division), b = T(m.away, m.division);
+    const sc = scores[m.id]; if (!sc || sc.status === "disputed") continue;
+    const r = scoreResult(sc); if (!r.complete) continue;
+    for (const [x, y, me] of [[a, b, "A"], [b, a, "B"]]) {
+      const mySets = me === "A" ? r.setsA : r.setsB, opp = me === "A" ? r.setsB : r.setsA;
+      x.P++; x.SW += mySets; x.SL += opp; x.Pts += me === "A" ? r.ptsA : r.ptsB;
+      x.form.push(r.winner === me ? "W" : "L");
+      if (r.winner === me) { x.W++; opp === 0 ? x.w20++ : x.w21++; } else { x.L++; mySets === 0 ? x.l20++ : x.l21++; }
+      for (const set of sc.sets || []) { if (set && set[0] != null && set[1] != null) { x.PF += me === "A" ? set[0] : set[1]; x.PA += me === "A" ? set[1] : set[0]; } }
+    }
+  }
+  const list = [...teams.values()];
+  for (const t of list) t.PPM = t.P ? t.Pts / t.P : 0;
+  // points per match first: some teams play one match fewer
+  list.sort((p, q) => q.PPM - p.PPM || q.Pts - p.Pts || (q.SW - q.SL) - (p.SW - p.SL) || (q.PF - q.PA) - (p.PF - p.PA) || p.name.localeCompare(q.name));
+  const divs = new Map();
+  for (const t of list) { const d = t.division || ""; if (!divs.has(d)) divs.set(d, []); divs.get(d).push(t); }
+  return [...divs.entries()].sort((x, y) => divOrder(x[0]) - divOrder(y[0]) || x[0].localeCompare(y[0]));
+}
+function divOrder(d) {
+  const i = DIVISIONS.findIndex(x => x.toLowerCase() === clean(d).toLowerCase()); if (i >= 0) return i;
+  const n = clean(d).match(/^div(?:ision)?\s*(\d+)$/i); if (n) return Number(n[1]) - 1;
+  const g = clean(d).match(/^group\s*([a-z])$/i); if (g) return 20 + g[1].toLowerCase().charCodeAt(0) - 97;
+  return /comp/i.test(d) ? 40 : /casual|social|rec/i.test(d) ? 41 : 50;
+}
+
+/* Where each team is heading next, from the current tables. groups: [[name, teams sorted]] */
+function projectNext(stage, groups) {
+  const out = new Map();
+  if (stage === "group") {
+    groups.forEach(([g, teams]) => teams.forEach((t, i) => out.set(t.name, DIVISIONS[i] || "")));
+  } else if (stage === "r1") {
+    for (const [d, teams] of groups) {
+      const di = DIVISIONS.indexOf(d);
+      teams.forEach((t, i) => {
+        const n = teams.length;
+        if (di > 0 && i < 2) out.set(t.name, "▲ " + DIVISIONS[di - 1]);
+        else if (di >= 0 && di < DIVISIONS.length - 1 && i >= n - 2) out.set(t.name, "▼ " + DIVISIONS[di + 1]);
+        else out.set(t.name, "Stays");
+      });
+    }
+  } else if (stage === "r2") {
+    const pa = (groups.find(([d]) => d === "Premier A") || [, []])[1], pb = (groups.find(([d]) => d === "Premier B") || [, []])[1];
+    const seeds = [...pa.slice(0, 6), ...pb.slice(0, 2)];
+    const label = ["A1", "A2", "A3", "A4", "A5", "A6", "B1", "B2"];
+    const qf = { 0: "QF1 v B2", 7: "QF1 v A1", 1: "QF2 v B1", 6: "QF2 v A2", 2: "QF3 v A6", 5: "QF3 v A3", 3: "QF4 v A5", 4: "QF4 v A4" };
+    seeds.forEach((t, i) => out.set(t.name, qf[i] || label[i]));
+  }
+  return out;
+}
+
+const SAMPLE = [
+  ["Stage", "Week", "Date", "Time", "Court", "Division", "Home", "Away"],
+  ["Group stage", "1", "Sun 2 Nov", "10:00", "Court 1", "Pool A", "Block Party", "Net Gains"],
+  ["", "", "", "10:00", "Court 2", "Pool A", "Ace Ventura", "Dig Dug"],
+  ["", "", "", "11:00", "Court 1", "Pool B", "Bump Set Fly", "Sets on the Beach"],
+  ["", "", "", "11:00", "Court 2", "Pool B", "Volley Llamas", "Serve-ivors"],
+  ["Round 1", "2", "Sun 9 Nov", "10:00", "Court 1", "Competitive", "Block Party", "Ace Ventura"],
+  ["", "", "", "10:00", "Court 2", "Competitive", "Net Gains", "Dig Dug"],
+  ["", "", "", "11:00", "Court 1", "Casual", "Bump Set Fly", "Volley Llamas"],
+  ["", "", "", "11:00", "Court 2", "Casual", "Sets on the Beach", "Serve-ivors"]
+].map(r => r.join("\t")).join("\n");
+
+if (typeof module !== "undefined") module.exports = { setError, setOver, STAGES, DIVISIONS, scoreResult, projectNext, stageId, textToRows, parseFixtures, groupWeeks, evalScore, computeStandings };
+</script>
+
+<script>
+/* Supabase backend. Gives the page the same small db/user API it was written against:
+   db.doc(path).get/set/update/delete/onSnapshot and db.collection(name).orderBy(f).limit(n).onSnapshot.
+   Everything lives in one table, docs(path, data), and is kept in memory, refreshed by realtime. */
+window.imsBackend = (function () {
+  const cfg = window.IMS_CONFIG || {};
+  const configured = typeof supabase !== "undefined" && cfg.supabaseUrl && !/YOUR-/.test(cfg.supabaseUrl + cfg.supabaseAnonKey);
+  if (!configured) return { configured: false };
+  const sb = supabase.createClient(cfg.supabaseUrl, cfg.supabaseAnonKey, { auth: { persistSession: true, autoRefreshToken: true } });
+  const cache = new Map();
+  const listeners = new Set();
+  let loaded = null, timer = null;
+
+  const fail = (error) => {
+    const e = new Error(error.message || "write failed");
+    e.code = error.code === "42501" || /row-level security/i.test(error.message || "") ? "denied" : error.code === "22000" ? "rejected" : "failed";
+    return e;
+  };
+  function notify() { clearTimeout(timer); timer = setTimeout(() => listeners.forEach(fn => { try { fn(); } catch (e) { console.warn(e); } }), 30); }
+  async function loadAll() {
+    const { data, error } = await sb.from("docs").select("path,data").range(0, 9999);
+    if (error) throw error;
+    cache.clear(); for (const r of data) cache.set(r.path, r.data);
+    notify();
+  }
+  function ready() {
+    if (!loaded) {
+      loaded = loadAll();
+      sb.channel("docs").on("postgres_changes", { event: "*", schema: "public", table: "docs" }, p => {
+        if (p.eventType === "DELETE") { if (p.old && p.old.path) cache.delete(p.old.path); }
+        else if (p.new && p.new.path) cache.set(p.new.path, p.new.data);
+        notify();
+      }).subscribe(status => { if (status === "SUBSCRIBED") loadAll().catch(() => {}); });
+      // catch anything realtime missed while the phone was asleep
+      document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") loadAll().catch(() => {}); });
+      setInterval(() => { if (document.visibilityState === "visible") loadAll().catch(() => {}); }, 60000);
+    }
+    return loaded;
+  }
+  const docSnap = path => { const d = cache.get(path); return { id: path.split("/").pop(), exists: d !== undefined, data: () => d }; };
+
+  function doc(path) {
+    return {
+      async get() { await ready(); return docSnap(path); },
+      async set(data) {
+        const { data: rows, error } = await sb.from("docs").upsert({ path, data }).select("path,data");
+        if (error) throw fail(error);
+        cache.set(path, rows && rows[0] ? rows[0].data : data); notify();
+      },
+      async update(patch) { await ready(); return this.set({ ...(cache.get(path) || {}), ...patch }); },
+      async delete() {
+        const { error } = await sb.from("docs").delete().eq("path", path);
+        if (error) throw fail(error);
+        cache.delete(path); notify();
+      },
+      onSnapshot(fn, onErr) {
+        const run = () => fn(docSnap(path));
+        listeners.add(run); ready().then(run, onErr);
+        return () => listeners.delete(run);
+      }
+    };
+  }
+  function collection(name) {
+    let order = null, max = Infinity;
+    const q = {
+      orderBy(f) { order = f; return q; },
+      limit(n) { max = n; return q; },
+      onSnapshot(fn, onErr) {
+        const run = () => {
+          let docs = [...cache.entries()].filter(([p]) => p.startsWith(name + "/")).map(([p, d]) => ({ id: p.slice(name.length + 1), data: () => d }));
+          if (order) docs.sort((a, b) => ((a.data() || {})[order] ?? 0) - ((b.data() || {})[order] ?? 0));
+          fn({ docs: docs.slice(0, max) });
+        };
+        listeners.add(run); ready().then(run, onErr);
+        return () => listeners.delete(run);
+      }
+    };
+    return q;
+  }
+
+  /* organiser sign in */
+  const auth = {
+    async isAdmin() {
+      const { data: { session } } = await sb.auth.getSession();
+      if (!session) return false;
+      const { data, error } = await sb.rpc("is_admin");
+      return !error && data === true;
+    },
+    async email() { const { data: { session } } = await sb.auth.getSession(); return session ? session.user.email : ""; },
+    async signIn(email, password) {
+      const { error } = await sb.auth.signInWithPassword({ email, password });
+      if (error) throw error;
+      return auth.isAdmin();
+    },
+    async signOut() { await sb.auth.signOut(); },
+    onChange(fn) { sb.auth.onAuthStateChange(() => setTimeout(fn, 0)); }
+  };
+
+  return { configured: true, db: { doc, collection }, auth };
+})();
+</script>
+
+<script>
+/* ---------- page ---------- */
+if (typeof document !== "undefined") (function () {
+  const $ = s => document.querySelector(s);
+  const el = (tag, attrs = {}, ...kids) => {
+    const n = document.createElement(tag);
+    for (const [k, v] of Object.entries(attrs)) {
+      if (v == null || v === false) continue;
+      if (k === "class") n.className = v; else if (k === "text") n.textContent = v;
+      else if (k.startsWith("on")) n.addEventListener(k.slice(2), v); else n.setAttribute(k, v === true ? "" : v);
+    }
+    for (const k of kids.flat()) if (k != null && k !== false) n.append(k.nodeType ? k : document.createTextNode(String(k)));
+    return n;
+  };
+  const store = {
+    get(k) { try { return localStorage.getItem(k) || ""; } catch (e) { return ""; } },
+    set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+  };
+
+  const state = {
+    db: null, user: null, canWrite: null, canAdmin: false, ready: false, noDb: false, myId: null,
+    league: {}, weeks: [], scores: {}, view: "scores", week: null, stage: null,
+    filter: store.get("ims-filter"), myTeam: store.get("ims-team"),
+    drafts: {}, saving: {}, errors: {}, mode: {}, preview: null, importMode: "merge", importStage: "", readOnly: false
+  };
+
+  /* tabs */
+  document.querySelectorAll("nav.tabs button").forEach(b => b.addEventListener("click", () => setView(b.dataset.view)));
+  function setView(v) {
+    state.view = v;
+    document.querySelectorAll("nav.tabs button").forEach(b => b.setAttribute("aria-selected", String(b.dataset.view === v)));
+    for (const k of ["scores", "live", "standings", "setup"]) $("#view-" + k).hidden = k !== v;
+    document.body.classList.toggle("in-live", v === "live");
+    if (v === "live") keepAwake(); else { releaseAwake(); if (state.liveFull) { state.liveFull = false; try { if (document.fullscreenElement) document.exitFullscreen().catch(() => {}); } catch (e) {} $("#view-live").classList.remove("full"); } }
+    render();
+  }
+  const h0 = location.hash.slice(1);
+  if (h0 === "standings" || h0 === "setup" || h0 === "live") state.view = h0;
+  if (h0 === "organiser") state.orgOpen = true;
+
+  /* ---------- data ---------- */
+  async function boot() {
+    setView(state.view); renderAll();
+    const be = window.imsBackend || {};
+    if (!be.configured) { state.noDb = true; state.ready = true; renderAll(); return; }
+    const db = be.db;
+    state.db = db; state.canWrite = true;
+    await refreshAdmin();
+    be.auth.onChange(refreshAdmin);
+    db.doc("config/league").onSnapshot(s => { state.league = s.exists ? s.data() : {}; renderHeader(); }, e => console.warn(e));
+    db.collection("weeks").orderBy("order").onSnapshot(s => {
+      state.weeks = s.docs.map(d => ({ id: d.id, ...d.data() }));
+      state.ready = true;
+      if (!state.week || !state.weeks.some(w => w.id === state.week)) state.week = pickWeek();
+      renderAll();
+    }, e => { state.ready = true; state.loadError = true; renderAll(); console.warn(e); });
+    db.collection("scores").limit(1000).onSnapshot(s => {
+      const next = {}; for (const d of s.docs) next[d.id] = d.data();
+      const first = !state.scoresLoaded; state.scores = next; state.scoresLoaded = true;
+      if (first) state.week = pickWeek();
+      renderAll();
+    }, e => console.warn(e));
+  }
+
+  async function refreshAdmin() {
+    const auth = window.imsBackend.auth;
+    const was = state.canAdmin;
+    state.canAdmin = await auth.isAdmin().catch(() => false);
+    state.adminEmail = state.canAdmin ? await auth.email().catch(() => "") : "";
+    $("#tab-setup").hidden = !state.canAdmin;
+    if (state.view === "setup" && !state.canAdmin) state.view = "scores";
+    if (was !== state.canAdmin) state.drafts = {};
+    setView(state.view);
+    if (was !== state.canAdmin || !$("#orgbox").childNodes.length) renderOrg();
+  }
+
+  /* organiser sign in, at the bottom of every page */
+  function renderOrg() {
+    const box = $("#orgbox"); if (!box) return; box.replaceChildren();
+    if (!window.imsBackend || !window.imsBackend.configured) return;
+    const auth = window.imsBackend.auth;
+    if (state.canAdmin) {
+      box.append(el("span", { text: `Organiser: ${state.adminEmail || "signed in"} · ` }),
+        el("button", { class: "linkbtn", text: "Sign out", onclick: async () => { await auth.signOut(); refreshAdmin(); } }));
+      return;
+    }
+    if (!state.orgOpen) { box.append(el("button", { class: "linkbtn", text: "Organiser sign in", onclick: () => { state.orgOpen = true; renderOrg(); } })); return; }
+    const email = el("input", { type: "email", autocomplete: "username", placeholder: "Email", "aria-label": "Email", required: true });
+    const pw = el("input", { type: "password", autocomplete: "current-password", placeholder: "Password", "aria-label": "Password", required: true });
+    const msg = el("span", { class: "msg" });
+    const go = el("button", { class: "btn primary", type: "submit", text: "Sign in" });
+    const form = el("form", {}, email, pw, el("div", { class: "actions" }, el("button", { class: "btn ghost", type: "button", text: "Cancel", onclick: () => { state.orgOpen = false; renderOrg(); } }), go), msg);
+    form.addEventListener("submit", async e => {
+      e.preventDefault(); go.disabled = true; msg.className = "msg"; msg.textContent = "Signing in…";
+      try {
+        const ok = await auth.signIn(email.value.trim(), pw.value);
+        if (!ok) { msg.className = "msg err"; msg.textContent = "Signed in, but this account isn't an organiser."; await auth.signOut(); go.disabled = false; return; }
+        state.orgOpen = false; await refreshAdmin();
+      } catch (err) { msg.className = "msg err"; msg.textContent = "Wrong email or password."; go.disabled = false; }
+    });
+    box.append(form); setTimeout(() => email.focus(), 0);
+  }
+
+  // "Sun 25 Oct" -> Date in the season year closest to today
+  function weekDate(w) {
+    const m = String(w.date || w.label || "").match(/(\d{1,2})\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)/i);
+    if (!m) return null;
+    const mon = "janfebmaraprmayjunjulaugsepoctnovdec".indexOf(m[2].toLowerCase()) / 3;
+    const now = new Date(); let best = null;
+    for (const y of [now.getFullYear() - 1, now.getFullYear(), now.getFullYear() + 1]) {
+      const d = new Date(y, mon, Number(m[1]));
+      if (!best || Math.abs(d - now) < Math.abs(best - now)) best = d;
+    }
+    return best;
+  }
+  function currentWeekId() {
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const dated = state.weeks.map(w => [w, weekDate(w)]).filter(x => x[1]);
+    if (!dated.length) return null;
+    const next = dated.find(([, d]) => d >= today);
+    return (next || dated[dated.length - 1])[0].id;
+  }
+  function pickWeek() {
+    const ws = state.weeks; if (!ws.length) return null;
+    const cur = currentWeekId(); if (cur) return cur;
+    const open = ws.find(w => (w.matches || []).some(m => !hasResult(m)));
+    return (open || ws[ws.length - 1]).id;
+  }
+  function allTeams() {
+    const t = new Map(); state.weeks.forEach(w => (w.matches || []).forEach(m => { for (const n of [m.home, m.away]) t.set(teamKey(n), n); }));
+    return [...t.values()].sort((a, b) => a.localeCompare(b));
+  }
+  const stageOf = w => STAGE_BY_ID[w.stage] || null;
+  const scoreOf = m => state.scores[m.id];
+  const hasResult = m => { const s = scoreOf(m); return !!(s && scoreResult(s).complete); };
+  const counts = m => { const s = scoreOf(m); return hasResult(m) && s.status !== "disputed"; };
+  const mine = m => state.myTeam && (teamKey(m.home) === teamKey(state.myTeam) || teamKey(m.away) === teamKey(state.myTeam));
+
+  /* ---------- render ---------- */
+  function renderAll() { renderHeader(); renderBanner(); render(); }
+  function render() {
+    if (state.view === "scores") renderScores();
+    else if (state.view === "standings") renderStandings();
+    else if (state.view === "live") renderLive();
+    else renderSetup();
+  }
+  function renderHeader() {
+    $("#leagueName").textContent = (state.league && state.league.name) || "IMS Volleyball";
+    const n = allTeams().length;
+    $("#leagueSub").textContent = n ? `${n} teams · Sundays · best of three` : "Sunday league · fixtures, scores and standings";
+    if (document.activeElement !== $("#nameInput")) $("#nameInput").value = (state.league && state.league.name) || "";
+  }
+  function renderBanner() {
+    const b = $("#banner"); b.replaceChildren();
+    if (state.noDb) b.append(el("div", { class: "notice warn" }, el("div", {}, el("strong", { text: "This site isn't connected to its database yet. " }), "Add the Supabase URL and anon key to config.js (see the README).")));
+    else if (state.loadError) b.append(el("div", { class: "notice warn" }, el("div", {}, el("strong", { text: "Couldn't load the league. " }), "Check your connection and refresh the page.")));
+  }
+
+  /* ---------- fixtures ---------- */
+  function renderScores() {
+    const v = $("#view-scores"); v.replaceChildren();
+    if (!state.ready) { v.append(el("div", { class: "empty" }, el("p", { text: "Loading fixtures…" }))); return; }
+    if (state.noDb) return;
+    if (!state.weeks.length) {
+      v.append(el("div", { class: "empty" }, el("h2", { text: "No fixtures yet" }),
+        el("p", { text: state.canAdmin ? "Open Setup and paste your fixtures from Excel. Each Sunday's matches will show up here as score cards." : "The organiser hasn't added the fixtures yet. Check back once they're up." }),
+        state.canAdmin ? el("p", {}, el("button", { class: "btn primary", style: "margin-top:14px", onclick: () => setView("setup"), text: "Go to Setup" })) : null));
+      return;
+    }
+    const tools = el("div", { class: "tools" });
+    const search = el("input", { class: "search", id: "teamFilter", type: "search", placeholder: "Search team, date or time", "aria-label": "Search fixtures by team, date or time", value: state.filter });
+    search.addEventListener("input", () => { state.filter = search.value; store.set("ims-filter", state.filter); renderScoresBody(); });
+    const teamSel = el("select", { id: "myTeam", class: "search", "aria-label": "My team" }, el("option", { value: "", text: "My team: not set" }), allTeams().map(t => el("option", { value: t, text: "My team: " + t, selected: teamKey(t) === teamKey(state.myTeam) })));
+    teamSel.addEventListener("change", () => { state.myTeam = teamSel.value; store.set("ims-team", state.myTeam); renderScoresBody(); });
+    tools.append(search, teamSel);
+    v.append(tools);
+
+    const strip = el("div", { class: "weeks", role: "group", "aria-label": "Weeks", id: "weekStrip" });
+    const multiStage = new Set(state.weeks.map(w => w.stage || "")).size > 1;
+    let lastStage = null;
+    for (const w of state.weeks) {
+      if (multiStage && w.stage !== lastStage) { strip.append(el("span", { class: "stagemark", text: stageOf(w) ? stageOf(w).short : "Other" })); lastStage = w.stage; }
+      const all = w.matches || []; const done = all.filter(hasResult).length;
+      strip.append(el("button", { "aria-pressed": String(w.id === state.week), class: w.id === currentWeekId() ? "now" : null, onclick: () => { state.week = w.id; if (state.filter) { state.filter = ""; store.set("ims-filter", ""); } renderScores(); } }, w.label, el("span", { class: "count", text: `${done}/${all.length}` })));
+    }
+    v.append(strip, el("div", { id: "scoresBody" }));
+    renderScoresBody();
+    const act = strip.querySelector('[aria-pressed="true"]');
+    if (act) strip.scrollLeft = act.offsetLeft - strip.offsetLeft - 40;
+  }
+
+  function matchText(w, m) { return [m.home, m.away, m.time, m.court, m.division, m.date, w.date, w.label, stageOf(w) && stageOf(w).label].join(" ").toLowerCase(); }
+
+  function renderScoresBody() {
+    const body = $("#scoresBody"); if (!body) return;
+    const strip = $("#weekStrip");
+    const f = state.filter.trim().toLowerCase();
+    const frag = document.createDocumentFragment();
+    if (f) {
+      if (strip) strip.classList.add("muted");
+      const terms = f.split(/\s+/);
+      let n = 0;
+      for (const w of state.weeks) {
+        const list = (w.matches || []).filter(m => { const t = matchText(w, m); return terms.every(x => t.includes(x)); });
+        if (!list.length) continue; n += list.length;
+        frag.append(weekHead(w, list, true), cardGrid(list));
+      }
+      if (!n) frag.append(el("div", { class: "empty" }, el("p", { text: `Nothing matches “${state.filter}”. Try a team name, a date like 9 Nov, or a time like 10:00.` })));
+      else frag.prepend(el("p", { class: "searchnote", text: `${n} match${n === 1 ? "" : "es"} for “${state.filter}” across all weeks` }));
+    } else {
+      if (strip) strip.classList.remove("muted");
+      const w = state.weeks.find(x => x.id === state.week) || state.weeks[0];
+      const all = w.matches || [];
+      frag.append(weekHead(w, all, false));
+      const done = all.filter(hasResult).length;
+      frag.append(el("div", { class: "progress" }, el("span", { style: `width:${all.length ? (100 * done / all.length) : 0}%` })));
+      const sorted = [...all].sort((a, b) => (mine(b) ? 1 : 0) - (mine(a) ? 1 : 0));
+      const groups = new Map(); for (const m of sorted) { const d = mine(m) ? "Your match" : (m.division || ""); if (!groups.has(d)) groups.set(d, []); groups.get(d).push(m); }
+      const keys = [...groups.keys()].sort((a, b) => (b === "Your match") - (a === "Your match") || divOrder(a) - divOrder(b) || a.localeCompare(b));
+      for (const d of keys) { if (d) frag.append(el("div", { class: "divlabel", text: d })); frag.append(cardGrid(groups.get(d))); }
+    }
+    body.replaceChildren(frag);
+  }
+  function weekHead(w, list, compact) {
+    const st = stageOf(w);
+    const done = list.filter(hasResult).length;
+    const conf = list.filter(m => (scoreOf(m) || {}).status === "confirmed").length;
+    return el("div", { class: "weekhead" + (compact ? " compact" : "") },
+      el("div", {}, st ? el("div", { class: "eyebrow", text: st.label }) : null, el("h2", { text: w.label })),
+      el("div", { class: "meta", text: `${w.date && w.date !== w.label ? w.date + " · " : ""}${done} of ${list.length} scores in · ${conf} confirmed` }));
+  }
+  function cardGrid(list) { const g = el("div", { class: "matches" }); for (const m of list) g.append(matchCard(m)); return g; }
+
+  function editable() { return !!state.db && state.canWrite !== false && !state.readOnly; }
+  function currentSets(m) {
+    if (state.drafts[m.id]) return state.drafts[m.id];
+    const s = scoreOf(m); return s && s.sets ? [0, 1, 2].map(i => s.sets[i] ? [...s.sets[i]] : [null, null]) : [[null, null], [null, null], [null, null]];
+  }
+  const sideName = (m, side) => side === "A" ? m.home : side === "B" ? m.away : "";
+  const otherSide = side => side === "A" ? "B" : side === "B" ? "A" : "";
+  function mySide(m) { if (!state.myTeam) return ""; if (teamKey(state.myTeam) === teamKey(m.home)) return "A"; if (teamKey(state.myTeam) === teamKey(m.away)) return "B"; return ""; }
+
+  function matchCard(m) {
+    const saved = scoreOf(m);
+    const sets = currentSets(m);
+    const dirty = !!state.drafts[m.id];
+    const r = dirty || !saved ? evalScore(sets) : scoreResult(saved);
+    const can = editable();
+    const status = saved && !dirty ? (saved.status || "pending") : "";
+    const card = el("article", { class: "match" + (status ? " st-" + status : "") + (mine(m) ? " mine" : ""), "data-id": m.id });
+    const where = [m.time, m.court].filter(Boolean).join(" · ");
+    card.append(el("div", { class: "mhead" }, el("span", { class: "where", text: where }), statusPill(status)));
+    if (m.note) card.append(el("div", { class: "mnote", text: m.note }));
+    const board = el("div", { class: "board" });
+    board.append(el("span"), ...[1, 2, 3].map(i => el("span", { class: "colh" }, "Set " + i, el("small", { text: "to " + TARGETS[i - 1] }))));
+    ["A", "B"].forEach((side, si) => {
+      const name = si === 0 ? m.home : m.away;
+      const won = r.complete && r.winner === side && !dirty;
+      board.append(el("div", { class: "team" + (won ? " won" : "") }, el("span", { text: name }), won ? el("span", { class: "tag", text: `+${si ? r.ptsB : r.ptsA}` }) : null));
+      for (let i = 0; i < 3; i++) {
+        const val = sets[i] ? sets[i][si] : null;
+        const thirdIdle = i === 2 && r.setWinners[0] && r.setWinners[1] && r.setWinners[0] === r.setWinners[1] && val == null;
+        const inp = el("input", {
+          type: "text", inputmode: "numeric", pattern: "[0-9]*", maxlength: "2", autocomplete: "off", id: `s-${m.id}-${si}-${i}`,
+          "aria-label": `${name}, set ${i + 1}`, value: val == null ? "" : String(val),
+          class: (r.setWinners[i] === side ? "setwon" : "") + (thirdIdle ? " dim" : ""),
+          disabled: !can || !state.canAdmin || !!state.saving[m.id]
+        });
+        inp.addEventListener("input", () => { const v = inp.value.replace(/\D/g, "").slice(0, 2); if (v !== inp.value) inp.value = v; onInput(m, si, i, v); });
+        inp.addEventListener("keydown", e => { if (e.key === "Enter") trySave(m); });
+        board.append(inp);
+      }
+    });
+    card.append(board);
+    card.append(footer(m, r, dirty, saved, can));
+    return card;
+  }
+
+  function statusPill(status) {
+    if (status === "confirmed") return el("span", { class: "pill ok", text: "Confirmed" });
+    if (status === "pending") return el("span", { class: "pill wait", text: "To check" });
+    if (status === "disputed") return el("span", { class: "pill bad", text: "Challenged" });
+    return el("span");
+  }
+
+  function footer(m, r, dirty, saved, can) {
+    const wrap = el("div", { class: "mfoot-wrap" });
+    const foot = el("div", { class: "mfoot" });
+    const mode = state.mode[m.id];
+    const actions = el("div", { class: "actions" });
+
+    if (state.errors[m.id]) foot.append(el("span", { class: "result err", text: state.errors[m.id] }));
+    else if (dirty && r.error) foot.append(el("span", { class: "result err", text: r.error }));
+    else if (r.complete) {
+      const wName = r.winner === "A" ? m.home : m.away;
+      foot.append(el("span", { class: "result" + (r.warnings.length ? " warn" : "") }, el("b", { text: `${wName} won ${Math.max(r.setsA, r.setsB)}–${Math.min(r.setsA, r.setsB)}` }),
+        r.warnings.length ? ` · check: ${r.warnings.join(", ").toLowerCase()}` : ` · ${r.ptsA}–${r.ptsB} league pts`, r.setsOnly ? " · set scores not recorded" : ""));
+    } else foot.append(el("span", { class: "result", text: can && state.canAdmin ? "Type the set scores, or count them live" : "No score yet" }));
+    if (!saved && !dirty) actions.append(el("button", { class: "btn", text: "Score live", onclick: () => { state.liveId = m.id; setView("live"); window.scrollTo(0, 0); } }));
+
+    if (dirty && mode === "side") {
+      // ask who is entering
+      wrap.append(foot);
+      const pick = el("div", { class: "sidepick" }, el("span", { text: "You're entering this for:" }),
+        el("button", { class: "btn", text: m.home, onclick: () => save(m, "A") }),
+        el("button", { class: "btn", text: m.away, onclick: () => save(m, "B") }),
+        state.canAdmin ? el("button", { class: "btn ghost", text: "Organiser (no confirmation needed)", onclick: () => save(m, "org") }) : null);
+      wrap.append(pick); return wrap;
+    }
+    if (dirty) {
+      actions.append(el("button", { class: "btn ghost", text: "Undo", onclick: () => { delete state.drafts[m.id]; delete state.errors[m.id]; delete state.mode[m.id]; rerenderCard(m); } }));
+      actions.append(el("button", { class: "btn primary", text: state.saving[m.id] ? "Saving…" : saved ? "Resubmit" : "Submit", disabled: !r.complete || !!state.saving[m.id], onclick: () => trySave(m) }));
+      foot.append(actions); wrap.append(foot);
+      return wrap;
+    }
+    foot.append(actions);
+    wrap.append(foot);
+    if (!saved) return wrap;
+
+    const st = saved.status || "pending";
+    const by = saved.side === "org" ? "the organiser" : sideName(m, saved.side) ? `${sideName(m, saved.side)}'s captain` : "a captain";
+    const other = otherSide(saved.side);
+    const iSubmitted = state.myId && saved.by === state.myId;
+    const ms = mySide(m);
+    const mayRespond = can && state.canAdmin;
+
+    if (mode === "challenge") {
+      const ta = el("input", { type: "text", class: "note-in", id: "note-" + m.id, placeholder: "What's wrong? e.g. set 2 was 23–25", maxlength: "200" });
+      const send = el("button", { class: "btn danger", text: "Send challenge", onclick: () => respond(m, "disputed", ta.value) });
+      wrap.append(el("div", { class: "sidepick" }, ta, el("div", { class: "actions" }, el("button", { class: "btn ghost", text: "Cancel", onclick: () => { delete state.mode[m.id]; rerenderCard(m); } }), send)));
+      setTimeout(() => ta.focus(), 0);
+      return wrap;
+    }
+    if (mode === "clear") {
+      wrap.append(el("div", { class: "sidepick" }, el("span", { text: "Remove this score completely?" }), el("div", { class: "actions" },
+        el("button", { class: "btn ghost", text: "Keep", onclick: () => { delete state.mode[m.id]; rerenderCard(m); } }),
+        el("button", { class: "btn danger", text: "Remove", onclick: async () => { try { await state.db.doc("scores/" + m.id).delete(); delete state.mode[m.id]; } catch (e) { state.errors[m.id] = "Couldn't remove it. Try again."; rerenderCard(m); } } }))));
+      return wrap;
+    }
+
+    const line = el("div", { class: "who" });
+    const act = el("div", { class: "actions" });
+    if (st === "pending") {
+      line.textContent = `Sent by ${by}${saved.at ? " · " + fmtTime(saved.at) : ""}. Counts now, the organiser will check it.`;
+      if (mayRespond) act.append(el("button", { class: "btn primary", text: "Confirm", onclick: () => respond(m, "confirmed") }));
+    } else if (st === "confirmed") {
+      const cb = saved.side === "org" ? "Entered by the organiser" : `Sent by ${by}, confirmed by ${saved.confirmedSide === "org" ? "the organiser" : sideName(m, saved.confirmedSide) || "the other captain"}`;
+      line.textContent = cb + (saved.confirmedAt ? " · " + fmtTime(saved.confirmedAt) : "");
+    } else if (st === "disputed") {
+      line.append(el("span", { text: `${sideName(m, saved.challengedSide) || "The other captain"} challenged this score` }), saved.note ? el("q", { text: saved.note }) : null, el("span", { text: ". Fix the numbers and resubmit, or the organiser can settle it." }));
+      if (state.canAdmin) act.append(el("button", { class: "btn", text: "Accept as entered", onclick: () => respond(m, "confirmed") }));
+    }
+    if (can && state.canAdmin) act.prepend(el("button", { class: "btn ghost danger", text: "Remove", onclick: () => { state.mode[m.id] = "clear"; rerenderCard(m); } }));
+    wrap.append(el("div", { class: "statusrow" }, line, act));
+    return wrap;
+  }
+
+  function fmtTime(iso) {
+    try { return new Date(iso).toLocaleString(undefined, { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }); } catch (e) { return ""; }
+  }
+
+  function rerenderCard(m) {
+    document.querySelectorAll(`.match[data-id="${CSS.escape(m.id)}"]`).forEach(old => {
+      const active = document.activeElement;
+      const keep = active && active.tagName === "INPUT" && old.contains(active) ? active : null;
+      const fresh = matchCard(m);
+      if (keep) {
+        const twin = fresh.querySelector("#" + CSS.escape(keep.id));
+        if (twin) { keep.className = twin.className; keep.disabled = twin.disabled; twin.replaceWith(keep); }
+      }
+      old.replaceWith(fresh);
+      if (keep && keep.isConnected) keep.focus({ preventScroll: true });
+      else if (active && active.id) { const f = document.getElementById(active.id); if (f) f.focus({ preventScroll: true }); }
+    });
+  }
+
+  function onInput(m, si, i, raw) {
+    const sets = currentSets(m).map(x => x ? [...x] : [null, null]);
+    const n = raw === "" ? null : Math.round(Number(raw));
+    sets[i][si] = Number.isFinite(n) ? n : null;
+    state.drafts[m.id] = sets; delete state.errors[m.id]; delete state.mode[m.id];
+    rerenderCard(m);
+  }
+
+  function trySave(m) {
+    const r = evalScore(state.drafts[m.id]); if (!r.complete) return;
+    if (state.canAdmin) return save(m, "org");
+    const side = mySide(m);
+    if (side) return save(m, side);
+    state.mode[m.id] = "side"; rerenderCard(m);
+  }
+
+  function writeError(m, e) {
+    if (e && e.code === "denied") state.errors[m.id] = "This result is already confirmed. Ask the organiser if it's wrong.";
+    else if (e && e.code === "rejected") state.errors[m.id] = "That score wasn't accepted. Check the set scores.";
+    else state.errors[m.id] = "Couldn't save. Check your connection and try again.";
+  }
+
+  async function save(m, side) {
+    const sets = state.drafts[m.id]; if (!sets) return;
+    const r = evalScore(sets); if (!r.complete) return;
+    const sets3 = sets.map(s => (s && s[0] != null ? [s[0], s[1]] : null));
+    let ok = false;
+    if (side !== "org" && !state.myTeam) { state.myTeam = sideName(m, side); store.set("ims-team", state.myTeam); }
+    state.saving[m.id] = true; delete state.mode[m.id]; rerenderCard(m);
+    try {
+      const now = new Date().toISOString();
+      const doc = { sets: sets3, home: m.home, away: m.away, by: state.myId || null, side, at: now, status: side === "org" ? "confirmed" : "pending" };
+      if (side === "org") Object.assign(doc, { confirmedSide: "org", confirmedBy: state.myId || null, confirmedAt: now });
+      await state.db.doc("scores/" + m.id).set(doc);
+      delete state.drafts[m.id];
+      ok = true;
+    } catch (e) { writeError(m, e); }
+    delete state.saving[m.id];
+    renderAll();
+    return ok;
+  }
+
+  async function respond(m, status, note) {
+    const saved = scoreOf(m); if (!saved) return;
+    const ms = mySide(m);
+    const side = state.canAdmin && ms !== otherSide(saved.side) ? "org" : (ms || otherSide(saved.side) || "");
+    const now = new Date().toISOString();
+    const patch = status === "confirmed"
+      ? { status, confirmedSide: side, confirmedBy: state.myId || null, confirmedAt: now }
+      : { status, note: clean(note).slice(0, 200), challengedSide: side, challengedBy: state.myId || null, challengedAt: now };
+    try { await state.db.doc("scores/" + m.id).update(patch); delete state.mode[m.id]; }
+    catch (e) { writeError(m, e); rerenderCard(m); }
+  }
+
+  /* ---------- live scorer ---------- */
+  let wakeLock = null;
+  async function keepAwake() { try { if (navigator.wakeLock && !wakeLock) { wakeLock = await navigator.wakeLock.request("screen"); wakeLock.addEventListener("release", () => { wakeLock = null; }); } } catch (e) {} }
+  function releaseAwake() { try { if (wakeLock) wakeLock.release(); } catch (e) {} wakeLock = null; }
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && state.view === "live") keepAwake(); });
+
+  const liveKey = id => "ims-live-" + id;
+  function loadLive(id) {
+    try { const v = JSON.parse(localStorage.getItem(liveKey(id)) || "null"); if (v && Array.isArray(v.done)) return v; } catch (e) {}
+    return { done: [], cur: [0, 0], hist: [], swapped: false, serve: null };
+  }
+  function saveLive(id, L) { state.liveCache = { id, L }; try { localStorage.setItem(liveKey(id), JSON.stringify(L)); } catch (e) {} }
+  function getLive(id) { return state.liveCache && state.liveCache.id === id ? state.liveCache.L : (state.liveCache = { id, L: loadLive(id) }).L; }
+  function clearLive(id) { try { localStorage.removeItem(liveKey(id)); } catch (e) {} state.liveCache = null; }
+  function findMatch(id) { for (const w of state.weeks) for (const m of w.matches || []) if (m.id === id) return { m, w }; return null; }
+  const setsWon = (L, side) => L.done.filter(([a, b]) => (side === 0 ? a > b : b > a)).length;
+  const matchOver = L => setsWon(L, 0) === 2 || setsWon(L, 1) === 2;
+
+  function liveAct(m, fn) {
+    const L = getLive(m.id);
+    L.hist.push(JSON.stringify({ done: L.done, cur: L.cur, serve: L.serve }));
+    if (L.hist.length > 300) L.hist.shift();
+    fn(L); L.at = Date.now(); saveLive(m.id, L); renderLive();
+  }
+  function liveDoc(m) { return state.db.doc("live/" + m.id); }
+  async function cloudSave(m, quiet) {
+    if (!state.db || !editable()) return;
+    const L = getLive(m.id);
+    state.cloud = { id: m.id, status: "saving" }; if (!quiet) renderLive();
+    try {
+      await liveDoc(m).set({ done: L.done, cur: L.cur, swapped: !!L.swapped, serve: L.serve, at: L.at || Date.now(), savedAt: new Date().toISOString(), by: state.myId || null });
+      state.cloud = { id: m.id, status: "saved", time: new Date() };
+    } catch (e) { state.cloud = { id: m.id, status: "error" }; }
+    if (state.view === "live" && state.liveId === m.id) renderLive();
+  }
+  async function checkCloud(m) {
+    if (!state.db || state.cloudChecked === m.id) return;
+    state.cloudChecked = m.id; state.remote = null;
+    try {
+      const snap = await liveDoc(m).get();
+      if (snap.exists) {
+        const d = snap.data(), L = getLive(m.id);
+        if ((d.at || 0) > (L.at || 0) && Array.isArray(d.done) && Array.isArray(d.cur)) { state.remote = { id: m.id, d }; renderLive(); }
+      }
+    } catch (e) {}
+  }
+  function loadRemote(m) {
+    const d = state.remote && state.remote.id === m.id && state.remote.d; if (!d) return;
+    const L = { done: d.done.map(x => [...x]), cur: [...d.cur], hist: [], swapped: !!d.swapped, serve: d.serve == null ? null : d.serve, at: d.at };
+    saveLive(m.id, L); state.liveCache = { id: m.id, L }; state.remote = null; renderLive();
+  }
+  function liveUndo(m) {
+    const L = getLive(m.id); const prev = L.hist.pop(); if (!prev) return;
+    Object.assign(L, JSON.parse(prev)); saveLive(m.id, L); renderLive();
+  }
+
+  function setFull(on) {
+    state.liveFull = on;
+    try {
+      if (on && document.documentElement.requestFullscreen && !document.fullscreenElement) document.documentElement.requestFullscreen().catch(() => {});
+      if (!on && document.fullscreenElement && document.exitFullscreen) document.exitFullscreen().catch(() => {});
+    } catch (e) {}
+    renderLive();
+  }
+  function renderLive() {
+    const v = $("#view-live"); v.replaceChildren();
+    v.classList.toggle("full", !!(state.liveFull && state.liveId && !state.liveSaved));
+    if (state.noDb) return;
+    const found = state.liveId && findMatch(state.liveId);
+    if (!found) {
+      v.append(el("div", { class: "weekhead" }, el("div", {}, el("div", { class: "eyebrow", text: "Live score" }), el("h2", { text: "Pick your match" }))),
+        el("p", { class: "searchnote", text: "Count points on court, then send the result straight to the fixtures. Keep the phone by the scorer; the screen stays on while you score." }));
+      const curId = currentWeekId() || state.week;
+      const w = state.weeks.find(x => x.id === curId) || state.weeks[0];
+      if (!w) { v.append(el("div", { class: "empty" }, el("p", { text: "No fixtures yet." }))); return; }
+      const list = [...(w.matches || [])].sort((a, b) => (mine(b) ? 1 : 0) - (mine(a) ? 1 : 0) || (a.time || "").localeCompare(b.time || ""));
+      const box = el("div", { class: "picklist" });
+      for (const m of list) {
+        const L = loadLive(m.id); const started = L.done.length || L.cur[0] || L.cur[1];
+        box.append(el("button", { class: "pick" + (mine(m) ? " mine" : ""), onclick: () => { state.liveId = m.id; renderLive(); window.scrollTo(0, 0); } },
+          el("span", { class: "pwhen", text: [m.time, m.court].filter(Boolean).join(" · ") }),
+          el("span", { class: "pteams", text: `${m.home} v ${m.away}` }),
+          hasResult(m) ? el("span", { class: "pill ok", text: "Result in" }) : started ? el("span", { class: "pill wait", text: "In progress" }) : null));
+      }
+      v.append(el("h3", { class: "divlabel", text: `${w.label}${w.date ? " · " + w.date : ""}` }), box);
+      return;
+    }
+    const { m } = found;
+    if (state.liveSaved === m.id) {
+      v.append(el("div", { class: "liveover" }, el("b", { text: `${m.home} v ${m.away}: result sent` }),
+        el("p", { class: "msg ok", text: "It's on the Fixtures page and counts in the standings now. The organiser will check it." }),
+        el("button", { class: "btn primary big", text: "Back to fixtures", onclick: () => { state.liveSaved = null; state.liveId = null; setView("scores"); } })));
+      if (state.liveFull) { state.liveFull = false; try { if (document.fullscreenElement) document.exitFullscreen().catch(() => {}); } catch (e) {} }
+      return;
+    }
+    const L = getLive(m.id);
+    checkCloud(m);
+    const setNo = L.done.length + 1, t = TARGETS[Math.min(L.done.length, 2)];
+    const over = matchOver(L);
+    const setDone = !over && setOver(L.cur[0], L.cur[1], t);
+    const order = L.swapped ? [1, 0] : [0, 1];
+
+    const top = el("div", { class: "livebar" },
+      state.liveFull ? null : el("button", { class: "btn ghost", text: "‹ Matches", onclick: () => { state.liveId = null; renderLive(); } }),
+      el("div", { class: "liveset" }, over ? "Match over" : `Set ${setNo} · to ${t}`),
+      el("div", { class: "livesets" }, L.done.map(([a, b]) => el("span", { class: "chip", text: `${a}–${b}` }))),
+      el("button", { class: "btn fullbtn", text: state.liveFull ? "Exit full screen" : "Full screen", onclick: () => setFull(!state.liveFull) }));
+    v.append(top);
+    if (state.remote && state.remote.id === m.id) {
+      const d = state.remote.d;
+      v.append(el("div", { class: "liveover remote" },
+        el("b", { text: "Saved from another phone" }),
+        el("span", { text: `${d.done.length ? "Sets " + d.done.map(([a, b]) => a + "–" + b).join(", ") + " · " : ""}Set ${d.done.length + 1}: ${m.home} ${d.cur[0]}–${d.cur[1]} ${m.away}` }),
+        el("div", { class: "actions" },
+          el("button", { class: "btn ghost", text: "Keep this phone's count", onclick: () => { state.remote = null; renderLive(); } }),
+          el("button", { class: "btn primary big", text: "Carry on from saved", onclick: () => loadRemote(m) }))));
+    }
+
+    const courts = el("div", { class: "courts" });
+    for (const side of order) {
+      const name = side === 0 ? m.home : m.away;
+      const pts = L.cur[side];
+      const panel = el("div", { class: "court c" + side });
+      const tap = el("button", { class: "tap", disabled: over || setDone, "aria-label": `Point to ${name}`, onclick: () => liveAct(m, L2 => { L2.cur[side] = Math.min(99, L2.cur[side] + 1); L2.serve = side; try { navigator.vibrate && navigator.vibrate(12); } catch (e) {} }) },
+        el("span", { class: "tname", text: name }),
+        el("span", { class: "tscore", text: pts }),
+        el("span", { class: "tsets" }, [0, 1].map(i => el("i", { class: i < setsWon(L, side) ? "on" : "" })), L.serve === side && !over ? el("b", { text: "Serving" }) : null));
+      panel.append(tap, el("button", { class: "minus", disabled: !pts || over, "aria-label": `Take a point off ${name}`, text: "−1", onclick: () => liveAct(m, L2 => { L2.cur[side] = Math.max(0, L2.cur[side] - 1); }) }));
+      courts.append(panel);
+    }
+    if (!over) v.append(courts);
+
+    if (setDone) {
+      const wi = L.cur[0] > L.cur[1] ? 0 : 1; const wn = wi === 0 ? m.home : m.away;
+      const last = (L.done.filter(([a, b]) => (wi === 0 ? a > b : b > a)).length + 1) === 2;
+      v.append(el("div", { class: "liveover" },
+        el("b", { text: `Set ${setNo} to ${wn}, ${Math.max(...L.cur)}–${Math.min(...L.cur)}` }),
+        el("div", { class: "actions" },
+          el("button", { class: "btn ghost", text: "Undo last point", onclick: () => liveUndo(m) }),
+          el("button", { class: "btn primary big", text: last ? "Finish match" : `Start set ${setNo + 1}`, onclick: () => liveAct(m, L2 => { L2.done.push([...L2.cur]); L2.cur = [0, 0]; L2.serve = null; if (!last) L2.swapped = !L2.swapped; }) || cloudSave(m, true) }))));
+    } else if (over) {
+      const sets = [0, 1, 2].map(i => L.done[i] ? [...L.done[i]] : [null, null]);
+      const r = evalScore(sets);
+      const saved = scoreOf(m);
+      const box = el("div", { class: "liveover" });
+      box.append(el("b", { text: r.complete ? `${r.winner === "A" ? m.home : m.away} won ${Math.max(r.setsA, r.setsB)}–${Math.min(r.setsA, r.setsB)} · ${L.done.map(([a, b]) => a + "–" + b).join(", ")}` : r.error }));
+      if (!editable()) {
+        box.append(el("p", { class: "msg err", text: "You can't send results from this account. Show this screen to your captain." }));
+      } else if (r.complete) {
+        const locked = saved && saved.status === "confirmed" && !state.canAdmin;
+        if (locked) box.append(el("p", { class: "msg", text: "The organiser has already confirmed a result for this match. If it's wrong, show them this screen." }));
+        else if (saved) box.append(el("p", { class: "msg", text: "A result was already sent for this match. Sending replaces it." }));
+        const send = async side => {
+          state.drafts[m.id] = sets;
+          const ok = await save(m, side);
+          if (ok) { clearLive(m.id); state.liveSaved = m.id; try { await liveDoc(m).delete(); } catch (e) {} renderLive(); }
+          else { box.append(el("p", { class: "msg err", text: state.errors[m.id] || "Couldn't send it. Try again." })); }
+        };
+        const ms = mySide(m);
+        if (locked) {}
+        else if (ms && !state.canAdmin) box.append(el("button", { class: "btn primary big", text: "Send result", onclick: () => send(ms) }));
+        else box.append(el("p", { class: "msg", text: "Send the result as captain of:" }), el("div", { class: "sidebtns" },
+          el("button", { class: "btn primary big", text: m.home, onclick: () => send("A") }),
+          el("button", { class: "btn primary big", text: m.away, onclick: () => send("B") }),
+          state.canAdmin ? el("button", { class: "btn ghost", text: "Organiser", onclick: () => send("org") }) : null));
+        box.append(el("button", { class: "btn ghost", text: "Undo last set", onclick: () => liveUndo(m) }));
+      }
+      v.append(box);
+    }
+
+    const cs = state.cloud && state.cloud.id === m.id ? state.cloud : null;
+    const tools = el("div", { class: "livetools" },
+      editable() ? el("button", { class: "btn" + (cs && cs.status === "saved" ? " savedok" : ""), text: !cs ? "Save" : cs.status === "saving" ? "Saving…" : cs.status === "error" ? "Save failed, retry" : "Saved " + cs.time.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }), disabled: cs && cs.status === "saving", onclick: () => cloudSave(m) }) : null,
+      el("button", { class: "btn", text: "Undo", disabled: !L.hist.length, onclick: () => liveUndo(m) }),
+      el("button", { class: "btn", text: "Swap sides", onclick: () => liveAct(m, L2 => { L2.swapped = !L2.swapped; }) }),
+      el("button", { class: "btn ghost danger", text: state.liveReset === m.id ? "Tap again to reset" : "Reset", onclick: () => {
+        if (state.liveReset !== m.id) { state.liveReset = m.id; renderLive(); setTimeout(() => { if (state.liveReset === m.id) { state.liveReset = null; renderLive(); } }, 3000); return; }
+        state.liveReset = null; clearLive(m.id); renderLive();
+      } }));
+    v.append(tools);
+    v.append(el("p", { class: "legend", text: "The count is kept on this phone, so a refresh won't lose it. Tap Save to hand over to another phone: open this match there and choose “Carry on from saved”. It also saves at the end of each set. Sides swap automatically after each set." }));
+  }
+
+  /* ---------- standings ---------- */
+  function stageStatus(id) {
+    const ws = state.weeks.filter(w => (w.stage || "group") === id);
+    if (!ws.length) return "upcoming";
+    const ms = ws.flatMap(w => w.matches || []);
+    const done = ms.filter(counts).length;
+    return done === ms.length ? "done" : done ? "live" : "scheduled";
+  }
+  function renderStandings() {
+    const v = $("#view-standings"); v.replaceChildren();
+    if (state.noDb) return;
+    const statuses = STAGES.map(st => ({ ...st, status: stageStatus(st.id) }));
+    if (!state.stage) {
+      const live = statuses.filter(s => s.status === "live" || s.status === "scheduled");
+      const done = statuses.filter(s => s.status === "done");
+      state.stage = (statuses.find(s => s.status === "live") || done[done.length - 1] || live[0] || statuses[0]).id;
+    }
+    const plan = el("ol", { class: "stages", "aria-label": "Season stages" });
+    for (const st of statuses) {
+      const lab = { done: "Finished", live: "In progress", scheduled: "Fixtures out", upcoming: "To come" }[st.status];
+      plan.append(el("li", {}, el("button", { class: "stage s-" + st.status, "aria-pressed": String(st.id === state.stage), onclick: () => { state.stage = st.id; renderStandings(); } },
+        el("span", { class: "sname", text: st.label }), el("span", { class: "ssub", text: st.sub }), el("span", { class: "sstate", text: lab }))));
+    }
+    v.append(plan);
+
+    const st = STAGE_BY_ID[state.stage];
+    const weeks = state.weeks.filter(w => (w.stage || "group") === st.id);
+    if (!weeks.length) {
+      v.append(el("div", { class: "empty" }, el("h2", { text: st.label }), el("p", { text: state.weeks.length ? `No ${st.label.toLowerCase()} fixtures yet. They'll appear here once the organiser adds them.` : "Standings appear once fixtures are added and the first scores come in." })));
+      return;
+    }
+    if (st.id === "ko" || st.id === "final") { renderBracket(v, weeks); return; }
+
+    const groups = computeStandings(weeks, state.scores);
+    const all = weeks.flatMap(w => w.matches || []);
+    const pend = all.filter(m => counts(m) && (scoreOf(m).status || "pending") === "pending").length;
+    const disp = all.filter(m => hasResult(m) && scoreOf(m).status === "disputed").length;
+    v.append(el("div", { class: "chips" },
+      el("span", { class: "chip" }, el("b", { text: "3" }), " win 2–0"),
+      el("span", { class: "chip" }, el("b", { text: "2" }), " win 2–1"),
+      el("span", { class: "chip" }, el("b", { text: "1" }), " lose 1–2"),
+      el("span", { class: "chip" }, el("b", { text: "0" }), " lose 0–2"),
+      el("span", { class: "chip quiet", text: `${all.filter(counts).length} of ${all.length} played${pend ? ` · ${pend} to check` : ""}${disp ? ` · ${disp} challenged (not counted)` : ""}` })));
+    const proj = projectNext(st.id, groups);
+    const nextHead = { group: { label: "Heading to", title: "Where this position goes after the group stage: 1st Premier A, 2nd Premier B, 3rd Division 3 … 6th Division 6" },
+      r1: { label: "Next", title: "Top 2 move up a division, bottom 2 move down" },
+      r2: { label: "Knockout", title: "Top 8 overall: all of Premier A plus the top 2 of Premier B" } }[st.id];
+    for (const [div, teams] of groups) {
+      v.append(el("h3", { text: div || (groups.length > 1 ? "Other" : st.label) }));
+      const head = el("tr", {}, el("th", { class: "l", text: "#" }), el("th", { class: "l", text: "Team" }),
+        el("th", { title: "Played", text: "P" }), el("th", { title: "Won", text: "W" }), el("th", { title: "Lost", text: "L" }),
+        el("th", { class: "hide-sm", title: "Won 2–0 / won 2–1 / lost 1–2 / lost 0–2", text: "2-0 2-1 1-2 0-2" }),
+        el("th", { title: "Sets won – sets lost", text: "Sets" }), el("th", { class: "hide-sm", title: "Rally points for minus against", text: "+/-" }),
+        el("th", { class: "hide-sm l", title: "Last five results, newest last", text: "Form" }),
+        el("th", { class: "pts", title: "League points", text: "Pts" }),
+        el("th", { title: "Points per match, used for ranking because some teams play one match fewer", text: "Pts/M" }),
+        nextHead ? el("th", { class: "l", title: nextHead.title, text: nextHead.label }) : null);
+      const tb = el("tbody");
+      teams.forEach((t, i) => {
+        const pd = t.PF - t.PA;
+        tb.append(el("tr", { class: teamKey(t.name) === teamKey(state.myTeam) ? "me" : "" }, el("td", { class: "l pos", text: i + 1 }), el("td", { class: "l team-c", text: t.name }),
+          el("td", { text: t.P }), el("td", { text: t.W }), el("td", { text: t.L }),
+          el("td", { class: "hide-sm", text: `${t.w20} · ${t.w21} · ${t.l21} · ${t.l20}` }),
+          el("td", { text: `${t.SW}–${t.SL}` }), el("td", { class: "hide-sm", text: (pd > 0 ? "+" : "") + pd }),
+          el("td", { class: "hide-sm l" }, el("span", { class: "form" }, t.form.slice(-5).map(x => el("i", { class: x === "W" ? "fw" : "fl", text: x })))),
+          el("td", { class: "pts", text: t.Pts }),
+          el("td", { text: t.P ? t.PPM.toFixed(2) : "–" }),
+          nextHead ? el("td", { class: "l next", text: proj.get(t.name) || "" }) : null));
+      });
+      v.append(el("div", { class: "tablewrap" }, el("table", {}, el("thead", {}, head), tb)));
+    }
+    v.append(el("p", { class: "legend", text: "Ranked by points per match, then points, set difference and rally-point difference. Results sent from Live score count straight away, before the organiser checks them. “Heading to” and “Next” are projections from the table as it stands." }));
+  }
+
+  function renderBracket(v, weeks) {
+    for (const w of weeks) {
+      v.append(el("h3", { text: w.label + (w.date && w.date !== w.label ? " · " + w.date : "") }));
+      const grid = el("div", { class: "bracket" });
+      for (const m of w.matches || []) {
+        const s = scoreOf(m); const r = s ? scoreResult(s) : null; const ok = r && r.complete && s.status !== "disputed";
+        const row = side => {
+          const name = sideName(m, side); const win = ok && r.winner === side;
+          return el("div", { class: "brow" + (win ? " win" : "") + (ok && !win ? " out" : "") }, el("span", { text: name }),
+            el("span", { class: "bsets", text: ok ? (side === "A" ? r.setsA : r.setsB) : "" }));
+        };
+        grid.append(el("div", { class: "bmatch" }, el("div", { class: "bhead", text: [m.division, m.time, m.court].filter(Boolean).join(" · ") || "Match" }), row("A"), row("B"),
+          s && s.status !== "confirmed" && r && r.complete ? el("div", { class: "bnote", text: s.status === "disputed" ? "Challenged" : "To check" }) : null));
+      }
+      v.append(grid);
+    }
+  }
+
+  /* ---------- setup ---------- */
+  function stageSelect(id, value, onchange, withAuto) {
+    const s = el("select", { id, class: "search" }, withAuto ? el("option", { value: "", text: "Stage: from the sheet (or Group stage)" }) : null,
+      STAGES.map(st => el("option", { value: st.id, text: "Stage: " + st.label, selected: st.id === value })));
+    s.addEventListener("change", () => onchange(s.value)); return s;
+  }
+  function renderSetup() {
+    renderPreview();
+    const wl = $("#weekList"); wl.replaceChildren();
+    if (!state.weeks.length) { wl.append(el("p", { text: "None yet. Import fixtures above." })); return; }
+    for (const w of state.weeks) {
+      const row = el("div", { class: "row" }, el("span", { class: "grow" }, el("b", { text: w.label }), ` · ${(w.matches || []).length} matches${w.date && w.date !== w.label ? " · " + w.date : ""}`));
+      const act = el("div", { class: "actions" });
+      act.append(stageSelect("stage-" + w.id, w.stage || "group", async val => { try { await state.db.doc("weeks/" + w.id).update({ stage: val }); } catch (e) {} }));
+      act.append(el("button", { class: "btn ghost danger", text: "Remove", onclick: () => {
+        act.replaceChildren(el("span", { class: "result", text: "Remove this week?" }),
+          el("button", { class: "btn ghost", text: "Cancel", onclick: renderSetup }),
+          el("button", { class: "btn danger", text: "Remove", onclick: async () => { try { await state.db.doc("weeks/" + w.id).delete(); } catch (e) { act.replaceChildren(el("span", { class: "msg err", text: "Couldn't remove it." })); } } }));
+      } }));
+      row.append(act); wl.append(row);
+    }
+  }
+
+  function buildPreview(rowsets) {
+    state.lastRowsets = rowsets;
+    let matches = [], warnings = [];
+    for (const rs of rowsets) { const p = parseFixtures(rs.rows, { defaultWeek: rs.name, defaultStage: state.importStage }); matches = matches.concat(p.matches); warnings = warnings.concat(p.warnings); }
+    const g = groupWeeks(matches);
+    g.weeks.forEach(w => { if (!w.stage) w.stage = "group"; });
+    state.preview = { weeks: g.weeks, warnings: warnings.concat(g.warnings), count: matches.length };
+    renderPreview();
+  }
+
+  function renderPreview() {
+    const out = $("#previewOut"); out.replaceChildren();
+    const p = state.preview; if (!p) return;
+    if (!p.count) { out.append(el("p", { class: "msg err", text: "Couldn't find any matches. Make sure each row has two team names, or a cell like “Team A vs Team B”." })); return; }
+    const teams = new Set(); p.weeks.forEach(w => w.matches.forEach(m => { teams.add(teamKey(m.home)); teams.add(teamKey(m.away)); }));
+    out.append(el("p", {}, el("b", { text: `Found ${p.count} matches across ${p.weeks.length} week${p.weeks.length === 1 ? "" : "s"} with ${teams.size} teams.` }), " Check the weeks below before importing."));
+    if (p.warnings.length) out.append(el("ul", { class: "warnlist" }, p.warnings.slice(0, 8).map(w => el("li", { text: w })), p.warnings.length > 8 ? el("li", { text: `…and ${p.warnings.length - 8} more` }) : null));
+    out.append(el("div", { class: "chips" }, p.weeks.slice(0, 40).map(w => el("span", { class: "chip", text: `${STAGE_BY_ID[w.stage].short} · ${w.label} · ${w.matches.length}` }))));
+    const w0 = p.weeks[0];
+    const rows = w0.matches.map(m => el("tr", {}, el("td", { class: "l", text: w0.label }), el("td", { class: "l", text: m.time }), el("td", { class: "l", text: m.court }), el("td", { class: "l", text: m.division }), el("td", { class: "l", text: m.home }), el("td", { class: "l", text: m.away })));
+    out.append(el("div", { class: "tablewrap preview" }, el("table", {}, el("thead", {}, el("tr", {}, ["Week", "Time", "Court", "Division", "Home", "Away"].map(h => el("th", { class: "l", text: h })))), el("tbody", {}, rows))));
+    out.append(el("div", { class: "row" }, stageSelect("importStage", state.importStage, val => { state.importStage = val; if (state.lastRowsets) buildPreview(state.lastRowsets); }, true)));
+    const mk = (val, label) => { const id = "mode-" + val; const r = el("input", { type: "radio", name: "importMode", id, value: val, checked: state.importMode === val }); r.addEventListener("change", () => state.importMode = val); return el("label", { for: id }, r, " ", label); };
+    out.append(el("div", { class: "radios" }, mk("merge", "Add these weeks (replaces weeks with the same name)"), mk("replace", "Replace all fixtures on the site")));
+    const msg = el("span", { class: "msg", id: "importMsg" });
+    out.append(el("div", { class: "row" }, el("button", { class: "btn primary", id: "importBtn", text: `Import ${p.count} matches`, onclick: () => doImport(msg) }), msg));
+  }
+
+  async function doImport(msg) {
+    const p = state.preview; if (!p) return;
+    const btn = $("#importBtn"); btn.disabled = true; msg.className = "msg"; msg.textContent = "Importing…";
+    try {
+      const existing = new Map(state.weeks.map(w => [w.id, w]));
+      let order = state.importMode === "replace" ? 0 : state.weeks.reduce((a, w) => Math.max(a, w.order || 0), 0);
+      for (const w of p.weeks) {
+        const ord = state.importMode !== "replace" && existing.has(w.id) ? existing.get(w.id).order : ++order;
+        await state.db.doc("weeks/" + w.id).set({ label: w.label, stage: w.stage, date: w.date || "", order: ord, matches: w.matches });
+      }
+      if (state.importMode === "replace") {
+        const keep = new Set(p.weeks.map(w => w.id));
+        for (const w of state.weeks) if (!keep.has(w.id)) await state.db.doc("weeks/" + w.id).delete();
+      }
+      const done = `Imported ${p.count} matches. They're live on the Fixtures tab.`;
+      state.preview = null; state.lastRowsets = null; $("#pasteBox").value = "";
+      $("#previewOut").replaceChildren(el("p", { class: "msg ok", text: done }));
+    } catch (e) {
+      msg.className = "msg err"; msg.textContent = e && e.code === "invalid_argument" ? "Only the organiser and editors can import fixtures." : "Import stopped partway. Try again; weeks already saved are overwritten, not duplicated.";
+      btn.disabled = false;
+    }
+  }
+
+  let pasteTimer;
+  $("#pasteBox").addEventListener("input", () => { clearTimeout(pasteTimer); pasteTimer = setTimeout(() => { const t = $("#pasteBox").value; if (!t.trim()) { state.preview = null; renderPreview(); return; } buildPreview([{ rows: textToRows(t) }]); }, 250); });
+  $("#sampleBtn").addEventListener("click", () => { $("#pasteBox").value = SAMPLE; buildPreview([{ rows: textToRows(SAMPLE) }]); });
+  $("#clearPaste").addEventListener("click", () => { $("#pasteBox").value = ""; state.preview = null; renderPreview(); });
+  $("#saveName").addEventListener("click", async () => {
+    const m = $("#nameMsg");
+    try { await state.db.doc("config/league").set({ name: clean($("#nameInput").value) }); m.className = "msg ok"; m.textContent = "Saved"; }
+    catch (e) { m.className = "msg err"; m.textContent = "Couldn't save the name."; }
+  });
+
+  async function readFile(file) {
+    const name = file.name.toLowerCase();
+    try {
+      if (/\.(xlsx|xls)$/.test(name)) {
+        if (typeof XLSX === "undefined") throw new Error("The Excel reader didn't load. Copy and paste the rows instead.");
+        const wb = XLSX.read(await file.arrayBuffer(), { type: "array" });
+        const sets = wb.SheetNames.map(sn => ({ name: wb.SheetNames.length > 1 ? sn : "", rows: XLSX.utils.sheet_to_json(wb.Sheets[sn], { header: 1, raw: false, defval: "" }).map(r => r.map(clean)) })).filter(s => s.rows.some(r => r.some(Boolean)));
+        buildPreview(sets);
+      } else buildPreview([{ rows: textToRows(await file.text()) }]);
+    } catch (e) { $("#previewOut").replaceChildren(el("p", { class: "msg err", text: e.message || "Couldn't read that file." })); }
+  }
+  $("#fileInput").addEventListener("change", e => { const f = e.target.files[0]; if (f) readFile(f); e.target.value = ""; });
+  const drop = $("#drop");
+  drop.addEventListener("dragover", e => { e.preventDefault(); drop.classList.add("over"); });
+  drop.addEventListener("dragleave", () => drop.classList.remove("over"));
+  drop.addEventListener("drop", e => { e.preventDefault(); drop.classList.remove("over"); const f = e.dataTransfer.files[0]; if (f) readFile(f); });
+
+  boot();
+})();
+</script>
+</body>
+</html>
