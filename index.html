@@ -1701,7 +1701,8 @@ if (typeof document !== "undefined") (function () {
     for (const m of dated) {
       const d = ukDate(m.week), k = dayKey(d), old = known.get(k);
       m.date = shortDate(d);
-      if (old) { m.week = old.label; if (!m.stage) m.stage = old.stage || ""; continue; }
+      // a Sunday already on the site keeps its week and stage
+      if (old) { m.week = old.label; m.stage = old.stage || "group"; m.keepStage = true; continue; }
       if (!fresh.has(k)) fresh.set(k, "Week " + (++next));
       m.week = fresh.get(k);
     }
@@ -1720,7 +1721,7 @@ if (typeof document !== "undefined") (function () {
     out.append(el("div", { class: "tablewrap preview" }, el("table", {}, el("thead", {}, el("tr", {}, ["Week", "Time", "Court", "Division", "Home", "Away"].map(h => el("th", { class: "l", text: h })))), el("tbody", {}, rows))));
     out.append(el("div", { class: "row" }, stageSelect("importStage", state.importStage, val => { state.importStage = val; if (state.lastRowsets) buildPreview(state.lastRowsets); }, true)));
     const mk = (val, label) => { const id = "mode-" + val; const r = el("input", { type: "radio", name: "importMode", id, value: val, checked: state.importMode === val }); r.addEventListener("change", () => state.importMode = val); return el("label", { for: id }, r, " ", label); };
-    out.append(el("div", { class: "radios" }, mk("merge", "Add these weeks (replaces weeks with the same name)"), mk("replace", "Replace all fixtures on the site")));
+    out.append(el("div", { class: "radios" }, mk("merge", "Add these matches (weeks already on the site keep their other matches)"), mk("replace", "Replace all fixtures on the site")));
     const msg = el("span", { class: "msg", id: "importMsg" });
     out.append(el("div", { class: "row" }, el("button", { class: "btn primary", id: "importBtn", text: `Import ${p.count} matches`, onclick: () => doImport(msg) }), msg));
   }
@@ -1732,8 +1733,12 @@ if (typeof document !== "undefined") (function () {
       const existing = new Map(state.weeks.map(w => [w.id, w]));
       let order = state.importMode === "replace" ? 0 : state.weeks.reduce((a, w) => Math.max(a, w.order || 0), 0);
       for (const w of p.weeks) {
-        const ord = state.importMode !== "replace" && existing.has(w.id) ? existing.get(w.id).order : ++order;
-        await state.db.doc("weeks/" + w.id).set({ label: w.label, stage: w.stage, date: w.date || "", order: ord, matches: w.matches });
+        const old = state.importMode !== "replace" && existing.get(w.id);
+        const ord = old ? old.order : ++order;
+        // adding to a week that's already on the site: keep its other matches, update the ones in the file
+        let matches = w.matches;
+        if (old) { const incoming = new Map(w.matches.map(m => [m.id, m])); matches = (old.matches || []).map(m => incoming.get(m.id) ? { ...m, ...incoming.get(m.id) } : m); const have = new Set(matches.map(m => m.id)); matches = matches.concat(w.matches.filter(m => !have.has(m.id))); }
+        await state.db.doc("weeks/" + w.id).set({ label: w.label, stage: w.stage, date: w.date || (old && old.date) || "", order: ord, matches });
       }
       if (state.importMode === "replace") {
         const keep = new Set(p.weeks.map(w => w.id));
