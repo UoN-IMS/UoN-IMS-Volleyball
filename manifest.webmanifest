@@ -1,10 +1,10 @@
 {
-  "name": "IMS Volleyball",
+  "name": "UoN IMS Volleyball",
   "short_name": "IMS Volleyball",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
-  "background_color": "#faf6e4",
+  "background_color": "#ffffff",
   "theme_color": "#DEB406",
   "icons": [
     { "src": "icon-180.png", "sizes": "180x180", "type": "image/png" },
