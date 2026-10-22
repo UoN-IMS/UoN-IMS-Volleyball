@@ -1130,6 +1130,7 @@ if (typeof document !== "undefined") (function () {
 
     if (state.errors[m.id]) foot.append(el("span", { class: "result err", text: state.errors[m.id] }));
     else if (dirty && r.error) foot.append(el("span", { class: "result err", text: r.error }));
+    else if (r.complete && !dirty) { if (r.warnings.length) foot.append(el("span", { class: "result warn", text: `Check: ${r.warnings.join(", ").toLowerCase()}` })); }
     else if (r.complete) {
       const wName = r.winner === "A" ? m.home : m.away;
       foot.append(el("span", { class: "result" + (r.warnings.length ? " warn" : "") }, el("b", { text: `${wName} won ${Math.max(r.setsA, r.setsB)}–${Math.min(r.setsA, r.setsB)}` }),
@@ -1153,7 +1154,7 @@ if (typeof document !== "undefined") (function () {
       return wrap;
     }
     foot.append(actions);
-    wrap.append(foot);
+    if (foot.textContent || actions.childNodes.length) wrap.append(foot);
     if (!saved) return wrap;
 
     const st = saved.status || "pending";
