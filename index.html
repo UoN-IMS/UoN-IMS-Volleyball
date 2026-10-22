@@ -101,9 +101,14 @@ main { padding-block: 20px 60px; }
 .team .tag { flex: none; font-family: var(--display); font-size: 12px; font-weight: 700; letter-spacing: .06em; background: var(--win-soft); color: var(--win); border-radius: 4px; padding: 1px 6px; }
 .team .tag.lost { background: var(--ball-soft); color: var(--ink); }
 .team .tag.nil { background: transparent; color: var(--muted); border: 1px solid var(--line); }
-.board .setsonly-h { grid-column: span 3; }
-.board .setsonly { grid-column: span 3; height: 40px; display: flex; align-items: center; justify-content: center; border-radius: 6px; background: var(--bg); font-family: var(--display); font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; }
-.board .setsonly.won { background: var(--ball-soft); border: 1px solid var(--ball); }
+.board.result { grid-template-columns: minmax(0, 1fr) 56px repeat(3, 34px); }
+.board .total { height: 48px; display: flex; align-items: center; justify-content: center; border-radius: 8px; background: var(--bg); font-family: var(--display); font-size: 30px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.board .total.won { background: var(--court); color: var(--court-ink); }
+.board .setv { text-align: center; font-family: var(--display); font-size: 16px; font-weight: 600; color: var(--muted); font-variant-numeric: tabular-nums; }
+.board .setv.setwon { color: var(--ink); font-weight: 800; }
+.board .setv.none { opacity: .45; }
+.board.result input { width: 34px; height: 34px; font-size: 16px; }
+.board .setnote { grid-column: 3 / -1; text-align: center; font-size: 11px; color: var(--muted); }
 .board input { width: 44px; height: 40px; text-align: center; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); font-family: var(--display); font-size: 22px; font-weight: 600; font-variant-numeric: tabular-nums; padding: 0; -moz-appearance: textfield; }
 .board input::-webkit-outer-spin-button, .board input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 .board input.setwon { background: var(--ball-soft); border-color: var(--ball); }
@@ -296,7 +301,9 @@ td.next { font-size: 12px; color: var(--muted); font-weight: 600; }
   .weeks button { padding: 9px 14px; }
   .board { grid-template-columns: minmax(0, 1fr) repeat(3, 52px); gap: 8px 6px; }
   .board input { width: 52px; height: 50px; font-size: 24px; }
-  .board .setsonly { height: 50px; font-size: 24px; }
+  .board.result { grid-template-columns: minmax(0, 1fr) 60px repeat(3, 38px); }
+  .board.result input { width: 38px; height: 38px; }
+  .board .total { height: 52px; font-size: 32px; }
   .team { font-size: 15px; }
   .mfoot { flex-direction: column; align-items: stretch; }
   .mfoot .actions { justify-content: stretch; }
@@ -1071,21 +1078,26 @@ if (typeof document !== "undefined") (function () {
     card.append(el("div", { class: "mhead" }, el("span", { class: "where", text: where }), statusPill(status)));
     if (m.note) card.append(el("div", { class: "mnote", text: m.note }));
     const board = el("div", { class: "board" });
-    // results from Spawtz only have the set count; show that instead of empty boxes (the organiser still gets boxes to fill in)
-    const setsOnly = r.setsOnly && !dirty && !state.canAdmin;
-    if (setsOnly) board.append(el("span"), el("span", { class: "colh setsonly-h" }, "Sets won", el("small", { text: "set scores not recorded" })));
-    else board.append(el("span"), ...[1, 2, 3].map(i => el("span", { class: "colh" }, "Set " + i, el("small", { text: "to " + TARGETS[i - 1] }))));
+    // a finished match leads with the sets total; the set scores sit smaller beside it
+    const done = r.complete && !dirty;
+    if (done) board.classList.add("result");
+    board.append(el("span"));
+    if (done) board.append(el("span", { class: "colh total-h", text: "Sets" }));
+    board.append(...[1, 2, 3].map(i => el("span", { class: "colh" }, done ? String(i) : "Set " + i, done ? null : el("small", { text: "to " + TARGETS[i - 1] }))));
     ["A", "B"].forEach((side, si) => {
       const name = si === 0 ? m.home : m.away;
-      const done = r.complete && !dirty;
       const won = done && r.winner === side;
       const pts = si ? r.ptsB : r.ptsA;
       board.append(el("div", { class: "team" + (won ? " won" : "") }, el("span", { text: name }),
         done ? el("span", { class: "tag" + (won ? "" : pts ? " lost" : " nil"), title: `${pts} league point${pts === 1 ? "" : "s"}`, text: `+${pts}` }) : null));
-      if (setsOnly) { board.append(el("div", { class: "setsonly" + (won ? " won" : "") }, String(si ? r.setsB : r.setsA))); return; }
+      if (done) board.append(el("div", { class: "total" + (won ? " won" : ""), "aria-label": `${name} won ${si ? r.setsB : r.setsA} sets` }, String(si ? r.setsB : r.setsA)));
       for (let i = 0; i < 3; i++) {
         const val = sets[i] ? sets[i][si] : null;
         const thirdIdle = i === 2 && r.setWinners[0] && r.setWinners[1] && r.setWinners[0] === r.setWinners[1] && val == null;
+        if (done && !state.canAdmin) {
+          board.append(el("span", { class: "setv" + (r.setWinners[i] === side ? " setwon" : "") + (val == null ? " none" : ""), text: val == null ? "–" : String(val) }));
+          continue;
+        }
         const inp = el("input", {
           type: "text", inputmode: "numeric", pattern: "[0-9]*", maxlength: "2", autocomplete: "off", id: `s-${m.id}-${si}-${i}`,
           "aria-label": `${name}, set ${i + 1}`, value: val == null ? "" : String(val),
@@ -1097,6 +1109,7 @@ if (typeof document !== "undefined") (function () {
         board.append(inp);
       }
     });
+    if (done && r.setsOnly) board.append(el("span", { class: "setnote", text: "Set scores not recorded" }));
     card.append(board);
     card.append(footer(m, r, dirty, saved, can));
     return card;
@@ -1120,7 +1133,7 @@ if (typeof document !== "undefined") (function () {
     else if (r.complete) {
       const wName = r.winner === "A" ? m.home : m.away;
       foot.append(el("span", { class: "result" + (r.warnings.length ? " warn" : "") }, el("b", { text: `${wName} won ${Math.max(r.setsA, r.setsB)}–${Math.min(r.setsA, r.setsB)}` }),
-        r.warnings.length ? ` · check: ${r.warnings.join(", ").toLowerCase()}` : "", r.setsOnly && state.canAdmin ? " · set scores not recorded" : ""));
+        r.warnings.length ? ` · check: ${r.warnings.join(", ").toLowerCase()}` : ""));
     } else foot.append(el("span", { class: "result", text: can && state.canAdmin ? "Type the set scores, or count them live" : "No score yet" }));
     if (!saved && !dirty) actions.append(el("button", { class: "btn", text: "Score live", onclick: () => { state.liveId = m.id; setView("live"); window.scrollTo(0, 0); } }));
 
