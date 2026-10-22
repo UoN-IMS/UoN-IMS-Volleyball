@@ -61,6 +61,7 @@ The anon/publishable key is designed to be public: the security rules in `schema
 
 - Results from captains arrive as **To check**. Tap **Confirm** on the Fixtures page when you're happy, or type over the numbers and Submit to correct them. Your own entries are confirmed straight away.
 - New fixtures: Setup → paste from Excel or upload the .xlsx, then Import.
+- On iPhone, Safari can't hide its own bars, so tell scorers to tap **Share → Add to Home Screen** and open the site from that icon. It then runs full screen like an app.
 - Live counts that were saved mid-match are cleared automatically when the result is sent.
 - Results still need copying into Spawtz as before.
 

@@ -4,6 +4,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#DEB406">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="IMS Volleyball">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" href="icon-512.png">
 <title>IMS Volleyball Scores</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto+Slab:wght@600;700;800;900&family=Public+Sans:wght@400;500;600;700&display=swap">
@@ -266,7 +273,11 @@ td.next { font-size: 12px; color: var(--muted); font-weight: 600; }
 
 .fullbtn { margin-left: auto; }
 .livesets + .fullbtn { margin-left: 0; }
-#view-live.full { position: fixed; inset: 0; z-index: 50; background: var(--bg); display: flex; flex-direction: column; gap: 8px; padding: max(8px, env(safe-area-inset-top, 0px)) max(10px, env(safe-area-inset-right, 0px)) max(8px, env(safe-area-inset-bottom, 0px)) max(10px, env(safe-area-inset-left, 0px)); overflow: hidden; }
+html.live-full, html.live-full body { overflow: hidden; height: 100%; overscroll-behavior: none; }
+html.live-full header.top, html.live-full nav.tabs, html.live-full .foot, html.live-full .orgbox, html.live-full #banner { display: none !important; }
+.fulltip { display: flex; gap: 10px; align-items: center; background: var(--ball-soft); border: 1px solid var(--ball); border-radius: 10px; padding: 8px 10px; font-size: 13px; line-height: 1.35; }
+.fulltip .btn { min-height: 32px; padding: 2px 10px; flex: none; }
+#view-live.full { height: 100vh; height: 100dvh; position: fixed; inset: 0; z-index: 50; background: var(--bg); display: flex; flex-direction: column; gap: 8px; padding: max(8px, env(safe-area-inset-top, 0px)) max(10px, env(safe-area-inset-right, 0px)) max(8px, env(safe-area-inset-bottom, 0px)) max(10px, env(safe-area-inset-left, 0px)); overflow: hidden; }
 #view-live.full .livebar { margin: 0; flex-wrap: nowrap; }
 #view-live.full .livesets { margin-left: auto; overflow-x: auto; min-width: 0; }
 #view-live.full .courts { flex: 1 1 auto; min-height: 0; }
@@ -856,7 +867,7 @@ if (typeof document !== "undefined") (function () {
     document.querySelectorAll("nav.tabs button").forEach(b => b.setAttribute("aria-selected", String(b.dataset.view === v)));
     for (const k of ["scores", "live", "standings", "setup"]) $("#view-" + k).hidden = k !== v;
     document.body.classList.toggle("in-live", v === "live");
-    if (v === "live") keepAwake(); else { releaseAwake(); if (state.liveFull) { state.liveFull = false; try { if (document.fullscreenElement) document.exitFullscreen().catch(() => {}); } catch (e) {} $("#view-live").classList.remove("full"); } }
+    if (v === "live") keepAwake(); else { releaseAwake(); if (state.liveFull) { state.liveFull = false; try { if (document.fullscreenElement) document.exitFullscreen().catch(() => {}); } catch (e) {} $("#view-live").classList.remove("full"); document.documentElement.classList.remove("live-full"); } }
     render();
   }
   const h0 = location.hash.slice(1);
@@ -1322,8 +1333,13 @@ if (typeof document !== "undefined") (function () {
     Object.assign(L, JSON.parse(prev)); saveLive(m.id, L); renderLive();
   }
 
+  // iPhone Safari has no full screen for web pages; it only hides its bars for sites opened from the home screen
+  const isIOS = /iP(hone|od|ad)/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  const standalone = () => window.navigator.standalone === true || (window.matchMedia && matchMedia("(display-mode: standalone)").matches);
   function setFull(on) {
     state.liveFull = on;
+    document.documentElement.classList.toggle("live-full", !!on);
+    if (on) window.scrollTo(0, 0);
     try {
       if (on && document.documentElement.requestFullscreen && !document.fullscreenElement) document.documentElement.requestFullscreen().catch(() => {});
       if (!on && document.fullscreenElement && document.exitFullscreen) document.exitFullscreen().catch(() => {});
@@ -1332,7 +1348,9 @@ if (typeof document !== "undefined") (function () {
   }
   function renderLive() {
     const v = $("#view-live"); v.replaceChildren();
-    v.classList.toggle("full", !!(state.liveFull && state.liveId && !state.liveSaved));
+    const full = !!(state.liveFull && state.liveId && !state.liveSaved);
+    v.classList.toggle("full", full);
+    document.documentElement.classList.toggle("live-full", full);
     if (state.noDb) return;
     const found = state.liveId && findMatch(state.liveId);
     if (!found) {
@@ -1374,6 +1392,9 @@ if (typeof document !== "undefined") (function () {
       el("div", { class: "livesets" }, L.done.map(([a, b]) => el("span", { class: "chip", text: `${a}–${b}` }))),
       el("button", { class: "btn fullbtn", text: state.liveFull ? "Exit full screen" : "Full screen", onclick: () => setFull(!state.liveFull) }));
     v.append(top);
+    if (state.liveFull && isIOS && !standalone() && store.get("ims-fulltip") !== "1")
+      v.append(el("div", { class: "fulltip" }, el("span", { text: "Safari keeps its own bars on screen. For true full screen, tap Share → Add to Home Screen and score from the app icon." }),
+        el("button", { class: "btn", text: "OK", onclick: () => { store.set("ims-fulltip", "1"); renderLive(); } })));
     if (state.remote && state.remote.id === m.id) {
       const d = state.remote.d;
       v.append(el("div", { class: "liveover remote" },
