@@ -54,6 +54,10 @@ begin
       return 'set ' || (i + 1) || ' malformed';
     end if;
     if i = 2 and wins_a <> 1 then return 'set 3 only after 1-1'; end if;
+    if (s ->> 0)::numeric % 1 <> 0 or (s ->> 1)::numeric % 1 <> 0
+       or abs((s ->> 0)::numeric) > 99 or abs((s ->> 1)::numeric) > 99 then
+      return 'set ' || (i + 1) || ': whole numbers only';
+    end if;
     a := (s ->> 0)::numeric; b := (s ->> 1)::numeric;
     err := public.ims_set_error(a, b, targets[i + 1]);
     if err is not null then return 'set ' || (i + 1) || ': ' || err; end if;
@@ -64,25 +68,40 @@ begin
 end $$;
 
 -- 4. Checks every write that isn't from the organiser.
+create or replace function public.ims_live_ok(d jsonb) returns boolean
+language sql immutable as $$
+  select jsonb_typeof(d) = 'object'
+    and jsonb_typeof(d -> 'cur') = 'array' and jsonb_array_length(d -> 'cur') = 2
+    and jsonb_typeof(d -> 'cur' -> 0) = 'number' and jsonb_typeof(d -> 'cur' -> 1) = 'number'
+    and jsonb_typeof(d -> 'done') = 'array' and jsonb_array_length(d -> 'done') <= 3
+    and not exists (
+      select 1 from jsonb_array_elements(d -> 'done') s
+      where jsonb_typeof(s) <> 'array' or jsonb_array_length(s) <> 2
+         or jsonb_typeof(s -> 0) <> 'number' or jsonb_typeof(s -> 1) <> 'number'
+    );
+$$;
+
 create or replace function public.docs_guard() returns trigger
 language plpgsql set search_path = public as $$
-declare err text; match_id text;
+declare err text; match_id text; fixture jsonb;
 begin
   new.updated_at := now();
   -- the organiser, and the SQL editor itself, skip the checks
   if current_user not in ('anon', 'authenticated') or public.is_admin() then return new; end if;
   if octet_length(new.data::text) > 4000 then raise exception 'too large' using errcode = '22000'; end if;
-  if new.path like 'scores/%' then
-    match_id := substr(new.path, 8);
-    if not exists (
-      select 1 from public.docs w, jsonb_array_elements(w.data -> 'matches') m
-      where w.path like 'weeks/%' and m ->> 'id' = match_id
-    ) then raise exception 'unknown match' using errcode = '22000'; end if;
+  match_id := substr(new.path, strpos(new.path, '/') + 1);
+  select m into fixture from public.docs w, jsonb_array_elements(w.data -> 'matches') m
+    where w.path like 'weeks/%' and m ->> 'id' = match_id limit 1;
+  if fixture is null then raise exception 'unknown match' using errcode = '22000'; end if;
+  if new.path like 'live/%' then
+    if not public.ims_live_ok(new.data) then raise exception 'bad live count' using errcode = '22000'; end if;
+  elsif new.path like 'scores/%' then
     err := public.ims_score_error(new.data -> 'sets');
     if err is not null then raise exception 'invalid score: %', err using errcode = '22000'; end if;
     if coalesce(new.data ->> 'side', '') not in ('A', 'B') then raise exception 'side must be A or B' using errcode = '22000'; end if;
-    new.data := (new.data - 'confirmedSide' - 'confirmedBy' - 'confirmedAt' - 'result')
-                || jsonb_build_object('status', 'pending', 'at', to_jsonb(now()));
+    -- keep only what a captain may send; names come from the fixture
+    new.data := jsonb_build_object('sets', new.data -> 'sets', 'side', new.data ->> 'side',
+      'home', fixture ->> 'home', 'away', fixture ->> 'away', 'status', 'pending', 'at', to_jsonb(now()));
   end if;
   return new;
 end $$;

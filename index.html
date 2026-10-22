@@ -71,6 +71,8 @@ header.top .wrap { display: flex; flex-wrap: wrap; align-items: end; justify-con
 .brand { display: flex; align-items: center; gap: 10px; min-width: 0; padding-bottom: 10px; }
 .brand svg, .brand .logo { flex: none; }
 .brand .logo { height: 44px; width: auto; filter: drop-shadow(0 1px 0 rgba(0, 40, 22, .25)); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .brand .logo { filter: drop-shadow(0 0 1px #fff) drop-shadow(0 0 1px #fff); } }
+:root[data-theme="dark"] .brand .logo { filter: drop-shadow(0 0 1px #fff) drop-shadow(0 0 1px #fff); }
 .brand h1 { margin: 0; font-family: var(--display); font-weight: 900; font-size: 28px; letter-spacing: .01em; color: #ffffff; text-shadow: 0 2px 0 rgba(0, 40, 22, .45); line-height: 1; text-wrap: balance; }
 .brand small { display: block; font-size: 12px; font-weight: 600; letter-spacing: .04em; margin-top: 4px; }
 nav.tabs { display: flex; gap: 4px; }
@@ -331,6 +333,10 @@ html.live-full header.top, html.live-full nav.tabs, html.live-full .foot, html.l
   nav.tabs button { padding: 8px 9px 10px; font-size: 15px; }
   th, td { padding: 8px 6px; }
   .hide-sm { display: none; }
+}
+@media (max-width: 480px) {
+  .hide-xs { display: none; }
+  td.team-c { min-width: 110px; }
 }
 @media (prefers-reduced-motion: no-preference) { .progress span { transition: width .4s ease; } }
 .orgbox { text-align: center; margin: 6px 0 28px; font-size: 13px; color: var(--muted); }
@@ -805,7 +811,8 @@ window.imsBackend = (function () {
         cache.delete(path); notify();
       },
       onSnapshot(fn, onErr) {
-        const run = () => fn(docSnap(path));
+        let last;
+        const run = () => { const key = JSON.stringify(cache.get(path) ?? null); if (key === last) return; last = key; fn(docSnap(path)); };
         listeners.add(run); ready().then(run, onErr);
         return () => listeners.delete(run);
       }
@@ -817,7 +824,10 @@ window.imsBackend = (function () {
       orderBy(f) { order = f; return q; },
       limit(n) { max = n; return q; },
       onSnapshot(fn, onErr) {
+        let last;
         const run = () => {
+          const key = JSON.stringify([...cache.entries()].filter(([p]) => p.startsWith(name + "/")));
+          if (key === last) return; last = key;
           let docs = [...cache.entries()].filter(([p]) => p.startsWith(name + "/")).map(([p, d]) => ({ id: p.slice(name.length + 1), data: () => d }));
           if (order) docs.sort((a, b) => ((a.data() || {})[order] ?? 0) - ((b.data() || {})[order] ?? 0));
           fn({ docs: docs.slice(0, max) });
@@ -907,10 +917,17 @@ if (typeof document !== "undefined") (function () {
       if (!state.week || !state.weeks.some(w => w.id === state.week)) state.week = pickWeek();
       renderAll();
     }, e => { state.ready = true; state.loadError = true; renderAll(); console.warn(e); });
+    db.collection("live").limit(1000).onSnapshot(s => {
+      const next = {}; for (const d of s.docs) next[d.id] = d.data();
+      const was = JSON.stringify(state.live || {}); state.live = next;
+      if (state.view === "live" && state.liveId && JSON.stringify(next[state.liveId] || null) !== JSON.stringify(JSON.parse(was)[state.liveId] || null)) renderLive();
+    }, e => console.warn(e));
     db.collection("scores").limit(1000).onSnapshot(s => {
       const next = {}; for (const d of s.docs) next[d.id] = d.data();
       const first = !state.scoresLoaded; state.scores = next; state.scoresLoaded = true;
       if (first) state.week = pickWeek();
+      // don't pull the page out from under someone typing a score; catch up when they leave the box
+      if (typingInCard()) { state.deferRender = true; return; }
       renderAll();
     }, e => console.warn(e));
   }
@@ -953,6 +970,9 @@ if (typeof document !== "undefined") (function () {
     });
     box.append(form); setTimeout(() => email.focus(), 0);
   }
+
+  function typingInCard() { const a = document.activeElement; return !!(a && a.tagName === "INPUT" && a.closest && a.closest(".match")); }
+  document.addEventListener("focusout", () => setTimeout(() => { if (state.deferRender && !typingInCard()) { state.deferRender = false; renderAll(); } }, 0));
 
   // "Sun 25 Oct" -> Date in the season year closest to today
   function weekDate(w) {
@@ -1267,7 +1287,6 @@ if (typeof document !== "undefined") (function () {
     const r = evalScore(sets); if (!r.complete) return;
     const sets3 = sets.map(s => (s && s[0] != null ? [s[0], s[1]] : null));
     let ok = false;
-    if (side !== "org" && !state.myTeam) { state.myTeam = sideName(m, side); store.set("ims-team", state.myTeam); }
     state.saving[m.id] = true; delete state.mode[m.id]; rerenderCard(m);
     try {
       const now = new Date().toISOString();
@@ -1276,6 +1295,7 @@ if (typeof document !== "undefined") (function () {
       await state.db.doc("scores/" + m.id).set(doc);
       delete state.drafts[m.id];
       ok = true;
+      if (side !== "org" && !state.myTeam) { state.myTeam = sideName(m, side); store.set("ims-team", state.myTeam); }
     } catch (e) { writeError(m, e); }
     delete state.saving[m.id];
     renderAll();
@@ -1314,7 +1334,7 @@ if (typeof document !== "undefined") (function () {
 
   function liveAct(m, fn) {
     const L = getLive(m.id);
-    L.hist.push(JSON.stringify({ done: L.done, cur: L.cur, serve: L.serve }));
+    L.hist.push(JSON.stringify({ done: L.done, cur: L.cur, serve: L.serve, swapped: !!L.swapped }));
     if (L.hist.length > 300) L.hist.shift();
     fn(L); L.at = Date.now(); saveLive(m.id, L); renderLive();
   }
@@ -1329,21 +1349,17 @@ if (typeof document !== "undefined") (function () {
     } catch (e) { state.cloud = { id: m.id, status: "error" }; }
     if (state.view === "live" && state.liveId === m.id) renderLive();
   }
-  async function checkCloud(m) {
-    if (!state.db || state.cloudChecked === m.id) return;
-    state.cloudChecked = m.id; state.remote = null;
-    try {
-      const snap = await liveDoc(m).get();
-      if (snap.exists) {
-        const d = snap.data(), L = getLive(m.id);
-        if ((d.at || 0) > (L.at || 0) && Array.isArray(d.done) && Array.isArray(d.cur)) { state.remote = { id: m.id, d }; renderLive(); }
-      }
-    } catch (e) {}
+  // a count saved from another phone that is newer than this phone's, unless this phone said to ignore it
+  function remoteFor(m) {
+    const d = state.live && state.live[m.id], L = getLive(m.id);
+    if (!d || !Array.isArray(d.done) || !Array.isArray(d.cur) || !d.done.every(x => Array.isArray(x) && x.length === 2)) return null;
+    if ((d.at || 0) <= (L.at || 0) || (state.remoteSkip || {})[m.id] === d.at) return null;
+    return d;
   }
   function loadRemote(m) {
-    const d = state.remote && state.remote.id === m.id && state.remote.d; if (!d) return;
+    const d = remoteFor(m); if (!d) return;
     const L = { done: d.done.map(x => [...x]), cur: [...d.cur], hist: [], swapped: !!d.swapped, serve: d.serve == null ? null : d.serve, at: d.at };
-    saveLive(m.id, L); state.liveCache = { id: m.id, L }; state.remote = null; renderLive();
+    saveLive(m.id, L); state.liveCache = { id: m.id, L }; renderLive();
   }
   function liveUndo(m) {
     const L = getLive(m.id); const prev = L.hist.pop(); if (!prev) return;
@@ -1397,7 +1413,6 @@ if (typeof document !== "undefined") (function () {
       return;
     }
     const L = getLive(m.id);
-    checkCloud(m);
     const setNo = L.done.length + 1, t = TARGETS[Math.min(L.done.length, 2)];
     const over = matchOver(L);
     const setDone = !over && setOver(L.cur[0], L.cur[1], t);
@@ -1412,13 +1427,14 @@ if (typeof document !== "undefined") (function () {
     if (state.liveFull && isIOS && !standalone() && store.get("ims-fulltip") !== "1")
       v.append(el("div", { class: "fulltip" }, el("span", { text: "Safari keeps its own bars on screen. For true full screen, tap Share → Add to Home Screen and score from the app icon." }),
         el("button", { class: "btn", text: "OK", onclick: () => { store.set("ims-fulltip", "1"); renderLive(); } })));
-    if (state.remote && state.remote.id === m.id) {
-      const d = state.remote.d;
+    const remote = remoteFor(m);
+    if (remote) {
+      const d = remote;
       v.append(el("div", { class: "liveover remote" },
         el("b", { text: "Saved from another phone" }),
         el("span", { text: `${d.done.length ? "Sets " + d.done.map(([a, b]) => a + "–" + b).join(", ") + " · " : ""}Set ${d.done.length + 1}: ${m.home} ${d.cur[0]}–${d.cur[1]} ${m.away}` }),
         el("div", { class: "actions" },
-          el("button", { class: "btn ghost", text: "Keep this phone's count", onclick: () => { state.remote = null; renderLive(); } }),
+          el("button", { class: "btn ghost", text: "Keep this phone's count", onclick: () => { (state.remoteSkip = state.remoteSkip || {})[m.id] = d.at; renderLive(); } }),
           el("button", { class: "btn primary big", text: "Carry on from saved", onclick: () => loadRemote(m) }))));
     }
 
@@ -1457,13 +1473,17 @@ if (typeof document !== "undefined") (function () {
         if (locked) box.append(el("p", { class: "msg", text: "The organiser has already confirmed a result for this match. If it's wrong, show them this screen." }));
         else if (saved) box.append(el("p", { class: "msg", text: "A result was already sent for this match. Sending replaces it." }));
         const send = async side => {
-          state.drafts[m.id] = sets;
+          if (state.liveSending) return;
+          state.liveSending = m.id; state.liveErr = null; state.drafts[m.id] = sets; renderLive();
           const ok = await save(m, side);
-          if (ok) { clearLive(m.id); state.liveSaved = m.id; try { await liveDoc(m).delete(); } catch (e) {} renderLive(); }
-          else { box.append(el("p", { class: "msg err", text: state.errors[m.id] || "Couldn't send it. Try again." })); }
+          state.liveSending = null;
+          if (ok) { state.liveErr = null; clearLive(m.id); state.liveSaved = m.id; try { await liveDoc(m).delete(); } catch (e) {} renderLive(); }
+          else { state.liveErr = { id: m.id, text: state.errors[m.id] || "Couldn't send it. Check your signal and try again." }; delete state.errors[m.id]; renderLive(); }
         };
-        const ms = mySide(m);
-        if (locked) {}
+        if (state.liveErr && state.liveErr.id === m.id) box.append(el("p", { class: "msg err", text: state.liveErr.text }));
+        const ms = mySide(m), busy = state.liveSending === m.id;
+        if (busy) box.append(el("p", { class: "msg", text: "Sending…" }));
+        else if (locked) {}
         else if (ms && !state.canAdmin) box.append(el("button", { class: "btn primary big", text: "Send result", onclick: () => send(ms) }));
         else box.append(el("p", { class: "msg", text: "Send the result as captain of:" }), el("div", { class: "sidebtns" },
           el("button", { class: "btn primary big", text: m.home, onclick: () => send("A") }),
@@ -1534,27 +1554,30 @@ if (typeof document !== "undefined") (function () {
     const nextHead = { group: { label: "Heading to", title: "Where this position goes after the group stage: 1st Premier A, 2nd Premier B, 3rd Division 3 … 6th Division 6" },
       r1: { label: "Next", title: "Top 2 move up a division, bottom 2 move down" },
       r2: { label: "Knockout", title: "Top 8 overall: all of Premier A plus the top 2 of Premier B" } }[st.id];
+    // phones: "Premier A" -> "Prem A", "Division 3" -> "Div 3" so the table fits
+    const narrow = window.matchMedia && matchMedia("(max-width: 480px)").matches;
+    const shortDiv = t => narrow ? String(t).replace(/^Premier\b/, "Prem").replace(/^Division\b/, "Div") : t;
     for (const [div, teams] of groups) {
       v.append(el("h3", { text: div || (groups.length > 1 ? "Other" : st.label) }));
       const head = el("tr", {}, el("th", { class: "l", text: "#" }), el("th", { class: "l", text: "Team" }),
-        el("th", { title: "Played", text: "P" }), el("th", { title: "Won", text: "W" }), el("th", { title: "Lost", text: "L" }),
+        el("th", { title: "Played", text: "P" }), el("th", { class: "hide-xs", title: "Won", text: "W" }), el("th", { class: "hide-xs", title: "Lost", text: "L" }),
         el("th", { class: "hide-sm", title: "Won 2–0 / won 2–1 / lost 1–2 / lost 0–2", text: "2-0 2-1 1-2 0-2" }),
         el("th", { title: "Sets won – sets lost", text: "Sets" }), el("th", { class: "hide-sm", title: "Rally points for minus against", text: "+/-" }),
         el("th", { class: "hide-sm l", title: "Last five results, newest last", text: "Form" }),
         el("th", { class: "pts", title: "League points", text: "Pts" }),
         el("th", { title: "Points per match, used for ranking because some teams play one match fewer", text: "Pts/M" }),
-        nextHead ? el("th", { class: "l", title: nextHead.title, text: nextHead.label }) : null);
+        nextHead ? el("th", { class: "l", title: nextHead.title, text: narrow ? "Next" : nextHead.label }) : null);
       const tb = el("tbody");
       teams.forEach((t, i) => {
         const pd = t.PF - t.PA;
         tb.append(el("tr", { class: teamKey(t.name) === teamKey(state.myTeam) ? "me" : "" }, el("td", { class: "l pos", text: i + 1 }), el("td", { class: "l team-c", text: t.name }),
-          el("td", { text: t.P }), el("td", { text: t.W }), el("td", { text: t.L }),
+          el("td", { text: t.P }), el("td", { class: "hide-xs", text: t.W }), el("td", { class: "hide-xs", text: t.L }),
           el("td", { class: "hide-sm", text: `${t.w20} · ${t.w21} · ${t.l21} · ${t.l20}` }),
           el("td", { text: `${t.SW}–${t.SL}` }), el("td", { class: "hide-sm", text: (pd > 0 ? "+" : "") + pd }),
           el("td", { class: "hide-sm l" }, el("span", { class: "form" }, t.form.slice(-5).map(x => el("i", { class: x === "W" ? "fw" : "fl", text: x })))),
           el("td", { class: "pts", text: t.Pts }),
           el("td", { text: t.P ? t.PPM.toFixed(2) : "–" }),
-          nextHead ? el("td", { class: "l next", text: proj.get(t.name) || "" }) : null));
+          nextHead ? el("td", { class: "l next", text: shortDiv(proj.get(t.name) || "") }) : null));
       });
       v.append(el("div", { class: "tablewrap" }, el("table", {}, el("thead", {}, head), tb)));
     }
