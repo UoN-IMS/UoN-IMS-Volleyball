@@ -108,7 +108,6 @@ main { padding-block: 20px 60px; }
 .board .setv.setwon { color: var(--ink); font-weight: 800; }
 .board .setv.none { opacity: .45; }
 .board.result input { width: 34px; height: 34px; font-size: 16px; }
-.board .setnote { grid-column: 3 / -1; text-align: center; font-size: 11px; color: var(--muted); }
 .board input { width: 44px; height: 40px; text-align: center; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); font-family: var(--display); font-size: 22px; font-weight: 600; font-variant-numeric: tabular-nums; padding: 0; -moz-appearance: textfield; }
 .board input::-webkit-outer-spin-button, .board input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 .board input.setwon { background: var(--ball-soft); border-color: var(--ball); }
@@ -1109,7 +1108,6 @@ if (typeof document !== "undefined") (function () {
         board.append(inp);
       }
     });
-    if (done && r.setsOnly) board.append(el("span", { class: "setnote", text: "Set scores not recorded" }));
     card.append(board);
     card.append(footer(m, r, dirty, saved, can));
     return card;
