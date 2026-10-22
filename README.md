@@ -60,10 +60,10 @@ The anon/publishable key is designed to be public: the security rules in `schema
 ## Day to day
 
 - Results from captains arrive as **To check**. Tap **Confirm** on the Fixtures page when you're happy, or type over the numbers and Submit to correct them. Your own entries are confirmed straight away.
-- New fixtures: Setup → paste from Excel or upload the .xlsx, then Import.
+- New fixtures: Setup → paste from Excel or upload the file, then Import. The Spawtz fixture upload template works as is: rows are grouped by date into weeks (a date already on the site goes into that week), and "Hall C Vball 1" becomes Hall C · Court 1. Pick the stage (e.g. Round 1) before importing.
+- Results for Spawtz: Setup → Results for Spawtz → pick a week (or all) → Download. You get an .xls in the Spawtz upload template with the sets won as the score, matching the fixtures already in Spawtz. Only confirmed results are included unless you tick the box, and the week 1 default wins for late joiners are left out because they were never Spawtz fixtures.
 - On iPhone, Safari can't hide its own bars, so tell scorers to tap **Share → Add to Home Screen** and open the site from that icon. It then runs full screen like an app.
 - Live counts that were saved mid-match are cleared automatically when the result is sent.
-- Results still need copying into Spawtz as before.
 
 ## Notes
 

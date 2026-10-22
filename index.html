@@ -382,6 +382,11 @@ html.live-full header.top, html.live-full nav.tabs, html.live-full .foot, html.l
       <div id="previewOut"></div>
     </section>
     <section>
+      <h3>Results for Spawtz</h3>
+      <p>Downloads the results in Spawtz's fixture upload template, one row per match with the sets won as the score, so they line up with the fixtures already in Spawtz.</p>
+      <div id="spawtzOut"></div>
+    </section>
+    <section>
       <h3>Weeks on the site</h3>
       <div id="weekList" class="weeklist"></div>
     </section>
@@ -444,6 +449,8 @@ const HEAD = {
   stage: /^(stage|phase|round type|competition stage)$/i,
   sep: /^(v|vs|vs\.|versus)$/i
 };
+// Spawtz upload template: "Playing Area" is the court and "Division" beats "League"; Venue is the building
+const HEAD_FIRST = { court: /^playing area$/i, division: /^division$/i };
 
 function findHeader(rows) {
   for (let i = 0; i < Math.min(rows.length, 12); i++) {
@@ -458,6 +465,7 @@ function findHeader(rows) {
         }
       }
     });
+    r.forEach((c, j) => { for (const k in HEAD_FIRST) if (c && HEAD_FIRST[k].test(c)) map[k] = j; });
     if ((map.home != null && map.away != null) || map.match != null) {
       if (hits >= 2 || map.match != null) return { index: i, map };
     }
@@ -503,6 +511,13 @@ function stageId(t) {
   return "";
 }
 const STAGE_SECTION = /(stage|divisions|group|placement|knock|quarter|semi|final|play-?off|top ?8)/i;
+
+// "Hall C Vball 1" (Spawtz) <-> "Hall C · Court 1" (site)
+function courtLabel(c) { const m = clean(c).match(/^hall\s*([a-z])\s*v(?:olley)?ball\s*(\d+)$/i); return m ? `Hall ${m[1].toUpperCase()} · Court ${m[2]}` : clean(c); }
+function spawtzArea(c) { const m = clean(c).match(/hall\s*([a-z]).*?(\d+)\s*$/i); return m ? `Hall ${m[1].toUpperCase()} Vball ${m[2]}` : clean(c); }
+// "11/10/2026" -> Date (UK order); null if it isn't one
+function ukDate(t) { const m = clean(t).match(/^(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{2,4})$/); if (!m) return null; const y = m[3].length === 2 ? 2000 + Number(m[3]) : Number(m[3]); const d = new Date(y, Number(m[2]) - 1, Number(m[1])); return d.getDate() === Number(m[1]) ? d : null; }
+const shortDate = d => d.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" }).replace(",", "");
 
 function weekLabel(v) {
   const c = clean(v); if (!c) return "";
@@ -567,6 +582,7 @@ function parseFixtures(rows, opts = {}) {
     if (!rec.week && opts.defaultWeek) rec.week = opts.defaultWeek;
     home = clean(home); away = clean(away);
     if (teamKey(home) === teamKey(away)) { warnings.push(`Row ${i + 1}: “${home}” is listed against itself, skipped.`); continue; }
+    rec.court = courtLabel(rec.court);
     out.push({ stage: rec.stage || opts.defaultStage || "", week: rec.week, date: rec.date && rec.date !== rec.week ? rec.date : "", time: rec.time, court: rec.court, division: rec.division, home, away, row: i + 1 });
   }
   out.forEach(m => { if (!m.week && m.stage && !out.some(o => o.stage === m.stage && o.week)) m.week = STAGE_BY_ID[m.stage].label; });
@@ -730,7 +746,7 @@ const SAMPLE = [
   ["", "", "", "11:00", "Court 2", "Casual", "Sets on the Beach", "Serve-ivors"]
 ].map(r => r.join("\t")).join("\n");
 
-if (typeof module !== "undefined") module.exports = { setError, setOver, STAGES, DIVISIONS, scoreResult, projectNext, stageId, textToRows, parseFixtures, groupWeeks, evalScore, computeStandings };
+if (typeof module !== "undefined") module.exports = { courtLabel, spawtzArea, ukDate, shortDate, setError, setOver, STAGES, DIVISIONS, scoreResult, projectNext, stageId, textToRows, parseFixtures, groupWeeks, evalScore, computeStandings };
 </script>
 
 <script>
@@ -1569,8 +1585,62 @@ if (typeof document !== "undefined") (function () {
       STAGES.map(st => el("option", { value: st.id, text: "Stage: " + st.label, selected: st.id === value })));
     s.addEventListener("change", () => onchange(s.value)); return s;
   }
+  const SPAWTZ = { league: "Volleyball Sunday League (6-a-side, Mixed) DRSV", season: "IMS Academic year 26/27", venue: "David Sports Village Volleyball", duration: 60 };
+  const SPAWTZ_HEAD = ["League", "Division", "Season", "Date", "Time", "Home Team", "Away Team", "Venue", "Playing Area", "Duration", "Home Team Score", "Away Team Score", "Cross League", "Nonstanding", "Hidden"];
+  function spawtzSettings() { return { ...SPAWTZ, ...((state.league && state.league.spawtz) || {}) }; }
+  function spawtzRows(weekIds, withUnchecked) {
+    const cfg = spawtzSettings(); const rows = []; const skipped = { none: 0, unchecked: 0, nodate: 0, defaults: 0 };
+    for (const w of state.weeks) {
+      if (!weekIds.has(w.id)) continue;
+      for (const m of w.matches || []) {
+        const sc = scoreOf(m), r = scoreResult(sc);
+        // default wins against teams that joined late were never fixtures in Spawtz
+        if (/joined|forfeit|default win/i.test(m.note || "")) { skipped.defaults++; continue; }
+        if (!sc || !r.complete || sc.status === "disputed") { skipped.none++; continue; }
+        if (sc.status !== "confirmed" && !withUnchecked) { skipped.unchecked++; continue; }
+        const d = (m.date && weekDate({ date: m.date })) || weekDate(w);
+        if (!d) { skipped.nodate++; continue; }
+        const serial = (Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) - Date.UTC(1899, 11, 30)) / 86400000;
+        rows.push([cfg.league, m.division || "", cfg.season, { t: "n", v: serial, z: "dd/mm/yyyy" }, m.time || "", m.home, m.away, cfg.venue, spawtzArea(m.court), Number(cfg.duration) || 60, r.setsA, r.setsB, "", "", ""]);
+      }
+    }
+    return { rows, skipped };
+  }
+  function renderSpawtz() {
+    const box = $("#spawtzOut"); if (!box) return; box.replaceChildren();
+    const played = state.weeks.filter(w => (w.matches || []).some(hasResult));
+    if (!played.length) { box.append(el("p", { class: "msg", text: "No results yet." })); return; }
+    if (!state.spawtzWeek || (state.spawtzWeek !== "all" && !played.some(w => w.id === state.spawtzWeek))) state.spawtzWeek = played[played.length - 1].id;
+    const sel = el("select", { class: "search", id: "spawtzWeek", "aria-label": "Which week" },
+      el("option", { value: "all", text: "All weeks with results", selected: state.spawtzWeek === "all" }),
+      played.map(w => el("option", { value: w.id, text: `${w.label}${w.date ? " · " + w.date : ""}`, selected: w.id === state.spawtzWeek })));
+    sel.addEventListener("change", () => { state.spawtzWeek = sel.value; renderSpawtz(); });
+    const chk = el("input", { type: "checkbox", id: "spawtzAll", checked: !!state.spawtzUnchecked });
+    chk.addEventListener("change", () => { state.spawtzUnchecked = chk.checked; renderSpawtz(); });
+    const ids = new Set(state.spawtzWeek === "all" ? played.map(w => w.id) : [state.spawtzWeek]);
+    const { rows, skipped } = spawtzRows(ids, !!state.spawtzUnchecked);
+    const notes = [];
+    if (skipped.unchecked) notes.push(`${skipped.unchecked} still “To check”, left out`);
+    if (skipped.none) notes.push(`${skipped.none} with no result yet`);
+    if (skipped.defaults) notes.push(`${skipped.defaults} default win${skipped.defaults === 1 ? "" : "s"} for late joiners left out (not fixtures in Spawtz)`);
+    if (skipped.nodate) notes.push(`${skipped.nodate} without a date, left out`);
+    const btn = el("button", { class: "btn primary", text: `Download ${rows.length} result${rows.length === 1 ? "" : "s"} (.xls)`, disabled: !rows.length, onclick: () => {
+      if (typeof XLSX === "undefined") { msg.className = "msg err"; msg.textContent = "The Excel writer didn't load. Refresh and try again."; return; }
+      const ws = XLSX.utils.aoa_to_sheet([SPAWTZ_HEAD, ...rows]);
+      ws["!cols"] = SPAWTZ_HEAD.map((h, i) => ({ wch: [44, 12, 24, 12, 7, 30, 30, 30, 15, 9, 15, 15, 12, 12, 8][i] }));
+      const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "Sheet1");
+      const w = state.spawtzWeek === "all" ? "all-weeks" : slug((state.weeks.find(x => x.id === state.spawtzWeek) || {}).label || "week");
+      XLSX.writeFile(wb, `spawtz-results-${w}.xls`, { bookType: "biff8" });
+      msg.className = "msg ok"; msg.textContent = "Downloaded. Upload it in Spawtz as a fixture file.";
+    } });
+    const msg = el("span", { class: "msg" });
+    box.append(el("div", { class: "row" }, sel), el("div", { class: "row" }, el("label", { for: "spawtzAll" }, chk, " Include results still “To check”")),
+      el("div", { class: "row" }, btn, msg), notes.length ? el("p", { class: "msg", text: notes.join(" · ") + "." }) : null,
+      el("p", { class: "msg", text: `League “${spawtzSettings().league}”, season “${spawtzSettings().season}”. Team, division and court names are written exactly as on this site.` }));
+  }
   function renderSetup() {
     renderPreview();
+    renderSpawtz();
     const wl = $("#weekList"); wl.replaceChildren();
     if (!state.weeks.length) { wl.append(el("p", { text: "None yet. Import fixtures above." })); return; }
     for (const w of state.weeks) {
@@ -1590,10 +1660,28 @@ if (typeof document !== "undefined") (function () {
     state.lastRowsets = rowsets;
     let matches = [], warnings = [];
     for (const rs of rowsets) { const p = parseFixtures(rs.rows, { defaultWeek: rs.name, defaultStage: state.importStage }); matches = matches.concat(p.matches); warnings = warnings.concat(p.warnings); }
+    datedWeeks(matches);
     const g = groupWeeks(matches);
     g.weeks.forEach(w => { if (!w.stage) w.stage = "group"; });
     state.preview = { weeks: g.weeks, warnings: warnings.concat(g.warnings), count: matches.length };
     renderPreview();
+  }
+
+  // rows that only had a date (the Spawtz template has no week column): "11/10/2026" -> Week 1 · Sun 11 Oct
+  function datedWeeks(matches) {
+    const dayKey = d => d.getFullYear() + "-" + d.getMonth() + "-" + d.getDate();
+    const known = new Map();
+    for (const w of state.weeks) { const d = weekDate(w); if (d) known.set(dayKey(d), w); }
+    let next = state.weeks.reduce((a, w) => { const n = String(w.label || "").match(/^week (\d+)$/i); return n ? Math.max(a, Number(n[1])) : a; }, 0);
+    const fresh = new Map();
+    const dated = matches.filter(m => !m.date && ukDate(m.week)).sort((a, b) => ukDate(a.week) - ukDate(b.week));
+    for (const m of dated) {
+      const d = ukDate(m.week), k = dayKey(d), old = known.get(k);
+      m.date = shortDate(d);
+      if (old) { m.week = old.label; if (!m.stage) m.stage = old.stage || ""; continue; }
+      if (!fresh.has(k)) fresh.set(k, "Week " + (++next));
+      m.week = fresh.get(k);
+    }
   }
 
   function renderPreview() {
