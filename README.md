@@ -2,7 +2,7 @@
 
 Fixtures, live scoring and standings for the UoN IMS Volleyball league. It's a single web page hosted free on GitHub Pages, with the data in a free Supabase project.
 
-- **Everyone with the link** can see fixtures and standings, score a match on the Live score tab (and Save it to carry on from another phone), and send the result at the end. Results sent this way count straight away and show as "To check".
+- **Everyone with the link** can see fixtures and standings, score a match on the Live score tab, and send the result at the end. Only one device can score a match at a time; every point syncs, so a scorer can hand over by opening the match on another device and tapping Take over scoring. Results sent this way count straight away and show as "To check".
 - **The organiser** signs in at the bottom of any page ("Organiser sign in") and can then type or change any score, confirm or remove results, import fixtures and edit weeks on the Setup tab. Once a result is sent it's final: nobody else can change it, only the organiser.
 - The database itself checks every result sent from the public (sets to 25, 25, 15, win by 2, the match must exist), so nobody can get around the rules by bypassing the page.
 
@@ -63,7 +63,7 @@ The anon/publishable key is designed to be public: the security rules in `schema
 - New fixtures: Setup → paste from Excel or upload the file, then Import. The Spawtz fixture upload template works as is: rows are grouped by date into weeks (a date already on the site goes into that week), and "Hall C Vball 1" becomes Hall C · Court 1. Pick the stage (e.g. Round 1) before importing.
 - Results for Spawtz: Setup → Results for Spawtz → pick a week (or all) → Download. You get an .xls in the Spawtz upload template with the sets won as the score, matching the fixtures already in Spawtz. Only confirmed results are included unless you tick the box, and the week 1 default wins for late joiners are left out because they were never Spawtz fixtures.
 - On iPhone, Safari can't hide its own bars, so tell scorers to tap **Share → Add to Home Screen** and open the site from that icon. It then runs full screen like an app.
-- Live counts that were saved mid-match are cleared automatically when the result is sent.
+- Live counts are cleared automatically when the result is sent.
 
 ## Notes
 

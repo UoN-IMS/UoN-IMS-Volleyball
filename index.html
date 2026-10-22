@@ -278,6 +278,8 @@ td.next { font-size: 12px; color: var(--muted); font-weight: 600; }
 .livesets + .fullbtn { margin-left: 0; }
 html.live-full, html.live-full body { overflow: hidden; height: 100%; overscroll-behavior: none; }
 html.live-full header.top, html.live-full nav.tabs, html.live-full .foot, html.live-full .orgbox, html.live-full #banner { display: none !important; }
+.syncstate { font-size: 13px; color: var(--muted); align-self: center; padding: 0 6px; white-space: nowrap; }
+.syncstate.err { color: var(--bad, #b3261e); }
 .fulltip { display: flex; gap: 10px; align-items: center; background: var(--ball-soft); border: 1px solid var(--ball); border-radius: 10px; padding: 8px 10px; font-size: 13px; line-height: 1.35; }
 .fulltip .btn { min-height: 32px; padding: 2px 10px; flex: none; }
 #view-live.full { height: 100vh; height: 100dvh; position: fixed; inset: 0; z-index: 50; background: var(--bg); display: flex; flex-direction: column; gap: 8px; padding: max(8px, env(safe-area-inset-top, 0px)) max(10px, env(safe-area-inset-right, 0px)) max(8px, env(safe-area-inset-bottom, 0px)) max(10px, env(safe-area-inset-left, 0px)); overflow: hidden; }
@@ -1332,38 +1334,50 @@ if (typeof document !== "undefined") (function () {
   const setsWon = (L, side) => L.done.filter(([a, b]) => (side === 0 ? a > b : b > a)).length;
   const matchOver = L => setsWon(L, 0) === 2 || setsWon(L, 1) === 2;
 
+  /* one device scores a match at a time: the live doc records which device holds it */
+  const DEVICE = (() => { let d = store.get("ims-device"); if (!d) { d = "d" + Math.random().toString(36).slice(2, 10) + Date.now().toString(36); store.set("ims-device", d); } return d; })();
+  const liveOf = m => (state.live && state.live[m.id]) || null;
+  function ownerOf(m) { const d = liveOf(m); return !d || !d.device ? "free" : d.device === DEVICE ? "mine" : "other"; }
+  let syncTimer = null;
+  function scheduleSync(m) { clearTimeout(syncTimer); syncTimer = setTimeout(() => cloudSave(m, true), 700); }
+  function takeOver(m) {
+    const d = liveOf(m);
+    if (d && Array.isArray(d.done) && Array.isArray(d.cur)) saveLive(m.id, { done: d.done.map(x => [...x]), cur: [...d.cur], hist: [], swapped: !!d.swapped, serve: d.serve == null ? null : d.serve, at: Date.now() });
+    state.live = { ...(state.live || {}), [m.id]: { ...(d || {}), device: DEVICE } };
+    cloudSave(m, true); renderLive();
+  }
+  function ago(ms) { const s = Math.max(0, Math.round((Date.now() - ms) / 1000)); return s < 60 ? "just now" : s < 3600 ? Math.round(s / 60) + " min ago" : "over an hour ago"; }
+
   function liveAct(m, fn) {
+    if (ownerOf(m) === "other") { renderLive(); return; }
     const L = getLive(m.id);
     L.hist.push(JSON.stringify({ done: L.done, cur: L.cur, serve: L.serve, swapped: !!L.swapped }));
     if (L.hist.length > 300) L.hist.shift();
-    fn(L); L.at = Date.now(); saveLive(m.id, L); renderLive();
+    fn(L); L.at = Date.now(); saveLive(m.id, L); renderLive(); scheduleSync(m);
   }
   function liveDoc(m) { return state.db.doc("live/" + m.id); }
   async function cloudSave(m, quiet) {
-    if (!state.db || !editable()) return;
+    if (!state.db || !editable() || ownerOf(m) === "other" || scoreOf(m)) return;
     const L = getLive(m.id);
     state.cloud = { id: m.id, status: "saving" }; if (!quiet) renderLive();
     try {
-      await liveDoc(m).set({ done: L.done, cur: L.cur, swapped: !!L.swapped, serve: L.serve, at: L.at || Date.now(), savedAt: new Date().toISOString(), by: state.myId || null });
+      const doc = { done: L.done, cur: L.cur, swapped: !!L.swapped, serve: L.serve, at: L.at || Date.now(), device: DEVICE, seen: Date.now() };
+      await liveDoc(m).set(doc);
+      state.live = { ...(state.live || {}), [m.id]: doc };
       state.cloud = { id: m.id, status: "saved", time: new Date() };
     } catch (e) { state.cloud = { id: m.id, status: "error" }; }
-    if (state.view === "live" && state.liveId === m.id) renderLive();
+    if (state.view === "live" && state.liveId === m.id && !quiet) renderLive();
+    else if (state.view === "live" && state.liveId === m.id) { const st = document.querySelector(".syncstate"); if (st) st.replaceWith(syncChip(m)); }
   }
-  // a count saved from another phone that is newer than this phone's, unless this phone said to ignore it
-  function remoteFor(m) {
-    const d = state.live && state.live[m.id], L = getLive(m.id);
-    if (!d || !Array.isArray(d.done) || !Array.isArray(d.cur) || !d.done.every(x => Array.isArray(x) && x.length === 2)) return null;
-    if ((d.at || 0) <= (L.at || 0) || (state.remoteSkip || {})[m.id] === d.at) return null;
-    return d;
-  }
-  function loadRemote(m) {
-    const d = remoteFor(m); if (!d) return;
-    const L = { done: d.done.map(x => [...x]), cur: [...d.cur], hist: [], swapped: !!d.swapped, serve: d.serve == null ? null : d.serve, at: d.at };
-    saveLive(m.id, L); state.liveCache = { id: m.id, L }; renderLive();
+  function syncChip(m) {
+    const cs = state.cloud && state.cloud.id === m.id ? state.cloud : null;
+    if (cs && cs.status === "error") return el("button", { class: "btn syncstate err", text: "Not synced · retry", onclick: () => cloudSave(m) });
+    return el("span", { class: "syncstate", text: cs && cs.status === "saved" ? "Synced " + cs.time.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : cs && cs.status === "saving" ? "Syncing…" : "Not started" });
   }
   function liveUndo(m) {
     const L = getLive(m.id); const prev = L.hist.pop(); if (!prev) return;
-    Object.assign(L, JSON.parse(prev)); saveLive(m.id, L); renderLive();
+    if (ownerOf(m) === "other") { renderLive(); return; }
+    Object.assign(L, JSON.parse(prev)); L.at = Date.now(); saveLive(m.id, L); renderLive(); scheduleSync(m);
   }
 
   // iPhone Safari has no full screen for web pages; it only hides its bars for sites opened from the home screen
@@ -1395,11 +1409,11 @@ if (typeof document !== "undefined") (function () {
       const list = [...(w.matches || [])].sort((a, b) => (mine(b) ? 1 : 0) - (mine(a) ? 1 : 0) || (a.time || "").localeCompare(b.time || ""));
       const box = el("div", { class: "picklist" });
       for (const m of list) {
-        const L = loadLive(m.id); const started = L.done.length || L.cur[0] || L.cur[1];
+        const L = loadLive(m.id); const started = L.done.length || L.cur[0] || L.cur[1]; const elsewhere = ownerOf(m) === "other";
         box.append(el("button", { class: "pick" + (mine(m) ? " mine" : ""), onclick: () => { state.liveId = m.id; renderLive(); window.scrollTo(0, 0); } },
           el("span", { class: "pwhen", text: [m.time, m.court].filter(Boolean).join(" · ") }),
           el("span", { class: "pteams", text: `${m.home} v ${m.away}` }),
-          hasResult(m) ? el("span", { class: "pill ok", text: "Result in" }) : started ? el("span", { class: "pill wait", text: "In progress" }) : null));
+          hasResult(m) ? el("span", { class: "pill ok", text: "Result in" }) : elsewhere ? el("span", { class: "pill wait", text: "Being scored" }) : started ? el("span", { class: "pill wait", text: "In progress" }) : null));
       }
       v.append(el("h3", { class: "divlabel", text: `${w.label}${w.date ? " · " + w.date : ""}` }), box);
       return;
@@ -1428,15 +1442,18 @@ if (typeof document !== "undefined") (function () {
       v.append(el("div", { class: "fulltip" }, el("span", { text: "Safari keeps its own bars on screen. For true full screen, tap Share → Add to Home Screen and score from the app icon." }),
         el("button", { class: "btn", text: "OK", onclick: () => { store.set("ims-fulltip", "1"); renderLive(); } })));
     if (scoreOf(m) && !state.canAdmin && !matchOver(L)) v.append(el("div", { class: "fulltip" }, el("span", { text: "A result has already been sent for this match, so this count can't be sent. If the result is wrong, contact the organiser." })));
-    const remote = remoteFor(m);
-    if (remote) {
-      const d = remote;
+    // someone else's device holds this match: show their score and offer to take over
+    if (ownerOf(m) === "other" && !scoreOf(m)) {
+      const d = liveOf(m), cur = Array.isArray(d.cur) ? d.cur : [0, 0], done = Array.isArray(d.done) ? d.done : [];
+      const had = L.done.length || L.cur[0] || L.cur[1];
       v.append(el("div", { class: "liveover remote" },
-        el("b", { text: "Saved from another phone" }),
-        el("span", { text: `${d.done.length ? "Sets " + d.done.map(([a, b]) => a + "–" + b).join(", ") + " · " : ""}Set ${d.done.length + 1}: ${m.home} ${d.cur[0]}–${d.cur[1]} ${m.away}` }),
+        el("b", { text: had ? "Scoring moved to another device" : "Being scored on another device" }),
+        el("span", { text: `${done.length ? "Sets " + done.map(([a, b]) => a + "–" + b).join(", ") + " · " : ""}Set ${done.length + 1}: ${m.home} ${cur[0]}–${cur[1]} ${m.away}` }),
+        el("span", { class: "msg", text: `Last update ${ago(d.seen || d.at || Date.now())}. Only one device can score a match. Take over if that device is being swapped out or has died; it will stop scoring.` }),
         el("div", { class: "actions" },
-          el("button", { class: "btn ghost", text: "Keep this phone's count", onclick: () => { (state.remoteSkip = state.remoteSkip || {})[m.id] = d.at; renderLive(); } }),
-          el("button", { class: "btn primary big", text: "Carry on from saved", onclick: () => loadRemote(m) }))));
+          el("button", { class: "btn ghost", text: "‹ Matches", onclick: () => { state.liveId = null; renderLive(); } }),
+          el("button", { class: "btn primary big", text: "Take over scoring", onclick: () => takeOver(m) }))));
+      return;
     }
 
     const courts = el("div", { class: "courts" });
@@ -1498,15 +1515,17 @@ if (typeof document !== "undefined") (function () {
 
     const cs = state.cloud && state.cloud.id === m.id ? state.cloud : null;
     const tools = el("div", { class: "livetools" },
-      editable() ? el("button", { class: "btn" + (cs && cs.status === "saved" ? " savedok" : ""), text: !cs ? "Save" : cs.status === "saving" ? "Saving…" : cs.status === "error" ? "Save failed, retry" : "Saved " + cs.time.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }), disabled: cs && cs.status === "saving", onclick: () => cloudSave(m) }) : null,
+      editable() ? syncChip(m) : null,
       el("button", { class: "btn", text: "Undo", disabled: !L.hist.length, onclick: () => liveUndo(m) }),
       el("button", { class: "btn", text: "Swap sides", onclick: () => liveAct(m, L2 => { L2.swapped = !L2.swapped; }) }),
       el("button", { class: "btn ghost danger", text: state.liveReset === m.id ? "Tap again to reset" : "Reset", onclick: () => {
         if (state.liveReset !== m.id) { state.liveReset = m.id; renderLive(); setTimeout(() => { if (state.liveReset === m.id) { state.liveReset = null; renderLive(); } }, 3000); return; }
-        state.liveReset = null; clearLive(m.id); renderLive();
+        state.liveReset = null; clearLive(m.id);
+        if (ownerOf(m) === "mine") { liveDoc(m).delete().catch(() => {}); const lv = { ...(state.live || {}) }; delete lv[m.id]; state.live = lv; }
+        renderLive();
       } }));
     v.append(tools);
-    v.append(el("p", { class: "legend", text: "The count is kept on this phone, so a refresh won't lose it. Tap Save to hand over to another phone: open this match there and choose “Carry on from saved”. It also saves at the end of each set. Sides swap automatically after each set." }));
+    v.append(el("p", { class: "legend", text: "Only one device can score a match. Every point syncs, so to hand over just open this match on the new device and tap “Take over scoring”. A refresh won't lose the count. Sides swap automatically after each set." }));
   }
 
   /* ---------- standings ---------- */
