@@ -106,7 +106,7 @@ main { padding-block: 20px 60px; }
 .board { display: grid; grid-template-columns: minmax(0, 1fr) repeat(3, 44px); gap: 6px 6px; align-items: center; }
 .board .colh { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); text-align: center; font-weight: 600; }
 .board .colh small { display: block; font-weight: 400; letter-spacing: 0; text-transform: none; opacity: .8; }
-.team { font-weight: 600; min-width: 0; overflow-wrap: anywhere; display: flex; align-items: center; gap: 6px; line-height: 1.25; }
+.team { font-weight: 600; min-width: 0; overflow-wrap: break-word; hyphens: auto; display: flex; align-items: center; gap: 6px; line-height: 1.25; }
 .team.won { color: var(--win); }
 .team .tag { flex: none; font-family: var(--display); font-size: 12px; font-weight: 700; letter-spacing: .06em; background: var(--win-soft); color: var(--win); border-radius: 4px; padding: 1px 6px; }
 .team .tag.lost { background: var(--ball-soft); color: var(--ink); }
@@ -123,6 +123,23 @@ main { padding-block: 20px 60px; }
 .board input.setwon { background: var(--ball-soft); border-color: var(--ball); }
 .board input:disabled { opacity: 1; border-color: transparent; }
 .board input.dim:disabled { opacity: .35; }
+.mhead .div { opacity: .8; font-weight: 500; margin-left: auto; text-transform: uppercase; }
+.match.line { padding: 0; gap: 0; }
+.mrow { all: unset; box-sizing: border-box; cursor: pointer; display: grid; grid-template-columns: 52px minmax(0, 1fr) auto; align-items: center; gap: 10px; width: 100%; padding: 8px 12px; min-height: 48px; }
+.mrow:focus-visible { outline: 2px solid var(--ball); outline-offset: -2px; border-radius: var(--radius); }
+.mrow .when { display: flex; flex-direction: column; line-height: 1.15; font-variant-numeric: tabular-nums; }
+.mrow .when b { font-family: var(--display); font-size: 15px; }
+.mrow .when small { font-size: 11px; color: var(--muted); }
+.mrow .vs { min-width: 0; font-weight: 600; line-height: 1.3; overflow-wrap: anywhere; }
+.mrow .vs .v { color: var(--muted); font-weight: 400; }
+.mrow .nm.won { color: var(--win); }
+.mrow .sc { font-family: var(--display); font-size: 22px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.mrow .chev { color: var(--muted); font-size: 13px; }
+.match.line.open { padding-bottom: 12px; }
+.match.line .lmeta { font-size: 12px; color: var(--muted); padding: 0 12px 8px 74px; }
+.match.line > .actions, .match.line > .mnote { margin: 0 12px 0 74px; }
+.match.line > .actions { justify-content: flex-start; flex-wrap: wrap; }
+.mhead.tap { cursor: pointer; }
 .mfoot { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; min-height: 32px; }
 .result { font-size: 13px; color: var(--muted); }
 .result b { color: var(--ink); }
@@ -886,7 +903,7 @@ if (typeof document !== "undefined") (function () {
     db: null, user: null, canWrite: null, canAdmin: false, ready: false, noDb: false, myId: null,
     league: {}, weeks: [], scores: {}, view: "scores", week: null, stage: null,
     filter: store.get("ims-filter"), myTeam: store.get("ims-team"),
-    drafts: {}, saving: {}, errors: {}, mode: {}, preview: null, importMode: "merge", importStage: "", readOnly: false
+    drafts: {}, saving: {}, errors: {}, mode: {}, open: {}, preview: null, importMode: "merge", importStage: "", readOnly: false
   };
 
   /* tabs */
@@ -1076,7 +1093,7 @@ if (typeof document !== "undefined") (function () {
       const terms = f.split(/\s+/);
       let n = 0;
       for (const w of state.weeks) {
-        const list = (w.matches || []).filter(m => { const t = matchText(w, m); return terms.every(x => t.includes(x)); });
+        const list = byTime((w.matches || []).filter(m => { const t = matchText(w, m); return terms.every(x => t.includes(x)); }));
         if (!list.length) continue; n += list.length;
         frag.append(weekHead(w, list, true), cardGrid(list));
       }
@@ -1089,10 +1106,10 @@ if (typeof document !== "undefined") (function () {
       frag.append(weekHead(w, all, false));
       const done = all.filter(hasResult).length;
       frag.append(el("div", { class: "progress" }, el("span", { style: `width:${all.length ? (100 * done / all.length) : 0}%` })));
-      const sorted = [...all].sort((a, b) => (mine(b) ? 1 : 0) - (mine(a) ? 1 : 0));
-      const groups = new Map(); for (const m of sorted) { const d = mine(m) ? "Your match" : (m.division || ""); if (!groups.has(d)) groups.set(d, []); groups.get(d).push(m); }
-      const keys = [...groups.keys()].sort((a, b) => (b === "Your match") - (a === "Your match") || divOrder(a) - divOrder(b) || a.localeCompare(b));
-      for (const d of keys) { if (d) frag.append(el("div", { class: "divlabel", text: d })); frag.append(cardGrid(groups.get(d))); }
+      // in kick-off order, one heading per time slot; your own match goes first
+      const sorted = byTime(all).sort((a, b) => (mine(b) ? 1 : 0) - (mine(a) ? 1 : 0));
+      const groups = new Map(); for (const m of sorted) { const d = mine(m) ? "Your match" : (m.time || ""); if (!groups.has(d)) groups.set(d, []); groups.get(d).push(m); }
+      for (const [d, list] of groups) { if (d) frag.append(el("div", { class: "divlabel", text: d })); frag.append(cardGrid(list)); }
     }
     body.replaceChildren(frag);
   }
@@ -1104,6 +1121,9 @@ if (typeof document !== "undefined") (function () {
       el("div", {}, st ? el("div", { class: "eyebrow", text: st.label }) : null, el("h2", { text: w.label })),
       el("div", { class: "meta", text: `${w.date && w.date !== w.label ? w.date + " · " : ""}${done} of ${list.length} scores in · ${conf} confirmed` }));
   }
+  const clock = t => { const x = String(t || "").match(/(\d{1,2})[:.](\d{2})/); return x ? Number(x[1]) * 60 + Number(x[2]) : 9999; };
+  const courtNo = c => { const x = String(c || "").match(/(\d+)\s*$/); return x ? Number(x[1]) : 99; };
+  const byTime = list => [...list].sort((a, b) => clock(a.time) - clock(b.time) || courtNo(a.court) - courtNo(b.court));
   function cardGrid(list) { const g = el("div", { class: "matches" }); for (const m of list) g.append(matchCard(m)); return g; }
 
   function editable() { return !!state.db && state.canWrite !== false && !state.readOnly; }
@@ -1122,9 +1142,35 @@ if (typeof document !== "undefined") (function () {
     const r = dirty || !saved ? evalScore(sets) : scoreResult(saved);
     const can = editable();
     const status = saved && !dirty ? (saved.status || "pending") : "";
-    const card = el("article", { class: "match" + (status ? " st-" + status : "") + (mine(m) ? " mine" : ""), "data-id": m.id });
     const where = [m.time, m.court].filter(Boolean).join(" · ");
-    card.append(el("div", { class: "mhead" }, el("span", { class: "where", text: where }), statusPill(status)));
+    const head = () => el("div", { class: "mhead" }, el("span", { class: "where", text: where }), m.division ? el("span", { class: "div", text: m.division }) : null, statusPill(status));
+    const toggle = () => { if (state.open[m.id]) delete state.open[m.id]; else state.open[m.id] = "show"; rerenderCard(m); };
+    const fullBoard = dirty || state.errors[m.id] || state.open[m.id] === "type" || (saved && state.open[m.id]);
+    if (!fullBoard) {
+      // one line per game; tap it to open
+      const fin = saved && r.complete;
+      const open = !!state.open[m.id];
+      const short = String(m.court || "").replace(/^Hall [A-Z]\s*·\s*/i, "");
+      const nm = (side, name) => el("span", { class: "nm" + (fin && r.winner === side ? " won" : ""), text: name });
+      const row = el("button", { type: "button", class: "mrow", "aria-expanded": String(open), onclick: toggle },
+        el("span", { class: "when" }, el("b", { text: m.time || "" }), el("small", { text: short })),
+        el("span", { class: "vs" }, nm("A", m.home), el("span", { class: "v", text: " v " }), nm("B", m.away)),
+        fin ? el("span", { class: "sc", text: `${r.setsA}–${r.setsB}` }) : el("span", { class: "chev", "aria-hidden": "true", text: open ? "▴" : "▾" }));
+      const card = el("article", { class: "match line" + (open ? " open" : "") + (mine(m) ? " mine" : ""), "data-id": m.id }, row);
+      if (open) {
+        card.append(el("div", { class: "lmeta", text: [m.time, m.court, m.division].filter(Boolean).join(" · ") }));
+        if (m.note) card.append(el("div", { class: "mnote", text: m.note }));
+        const acts = el("div", { class: "actions" });
+        if (can && state.canAdmin) acts.append(el("button", { class: "btn ghost", text: "Type score", onclick: () => { state.open[m.id] = "type"; rerenderCard(m); } }));
+        acts.append(el("button", { class: "btn primary", text: "Score this game", onclick: () => { state.liveId = m.id; setView("live"); window.scrollTo(0, 0); } }));
+        card.append(acts);
+      }
+      return card;
+    }
+    const card = el("article", { class: "match" + (status ? " st-" + status : "") + (mine(m) ? " mine" : ""), "data-id": m.id });
+    const h = head();
+    if (state.open[m.id] && !dirty) { h.classList.add("tap"); h.setAttribute("role", "button"); h.tabIndex = 0; h.title = "Close"; h.addEventListener("click", toggle); h.addEventListener("keydown", e => { if (e.key === "Enter") toggle(); }); }
+    card.append(h);
     if (m.note) card.append(el("div", { class: "mnote", text: m.note }));
     const board = el("div", { class: "board" });
     // a finished match leads with the sets total; the set scores sit smaller beside it
@@ -1185,6 +1231,7 @@ if (typeof document !== "undefined") (function () {
         r.warnings.length ? ` · check: ${r.warnings.join(", ").toLowerCase()}` : ""));
     } else foot.append(el("span", { class: "result", text: can && state.canAdmin ? "Type the set scores, or count them live" : "No score yet" }));
     if (!saved && !dirty) actions.append(el("button", { class: "btn", text: "Score live", onclick: () => { state.liveId = m.id; setView("live"); window.scrollTo(0, 0); } }));
+    if (!saved && !dirty && state.open[m.id]) actions.prepend(el("button", { class: "btn ghost", text: "Close", onclick: () => { delete state.open[m.id]; delete state.errors[m.id]; rerenderCard(m); } }));
 
     if (dirty && mode === "side") {
       // ask who is entering
@@ -1196,7 +1243,7 @@ if (typeof document !== "undefined") (function () {
       wrap.append(pick); return wrap;
     }
     if (dirty) {
-      actions.append(el("button", { class: "btn ghost", text: "Undo", onclick: () => { delete state.drafts[m.id]; delete state.errors[m.id]; delete state.mode[m.id]; rerenderCard(m); } }));
+      actions.append(el("button", { class: "btn ghost", text: "Undo", onclick: () => { delete state.drafts[m.id]; delete state.errors[m.id]; delete state.mode[m.id]; delete state.open[m.id]; rerenderCard(m); } }));
       actions.append(el("button", { class: "btn primary", text: state.saving[m.id] ? "Saving…" : saved ? "Resubmit" : "Submit", disabled: !r.complete || !!state.saving[m.id], onclick: () => trySave(m) }));
       foot.append(actions); wrap.append(foot);
       return wrap;
