@@ -1422,8 +1422,8 @@ if (typeof document !== "undefined") (function () {
   /* ---------- organiser: edit a game ---------- */
   // "Hall B · Court 2" -> { hall: "Hall B", court: "Court 2" }
   function courtParts(c) { const x = String(c || "").match(/^(Hall [A-Z])\s*·\s*(.+)$/i); return x ? { hall: x[1], court: x[2] } : { hall: "", court: String(c || "") }; }
-  const COURTS = ["Hall C · Court 1", "Hall C · Court 2", "Hall C · Court 3", "Hall D · Court 4", "Hall D · Court 5", "Hall D · Court 6",
-    "Hall B · Court 1", "Hall B · Court 2", "Hall B · Court 3", "Hall C · Court 4", "Hall C · Court 5", "Hall C · Court 6"];
+  const COURTS = ["Hall A · Court 1", "Hall A · Court 2", "Hall A · Court 3", "Hall D · Court 4", "Hall D · Court 5", "Hall D · Court 6",
+    "Hall B · Court 1", "Hall B · Court 2", "Hall B · Court 3", "Hall C · Court 1", "Hall C · Court 2", "Hall C · Court 3", "Hall C · Court 4", "Hall C · Court 5", "Hall C · Court 6"];
   function startEdit(w, m) {
     const isNew = !m;
     m = m || { id: w.id + "--g" + Date.now().toString(36), time: "", court: "", home: "", away: "", division: "" };
