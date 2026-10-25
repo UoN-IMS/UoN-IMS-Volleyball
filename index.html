@@ -74,6 +74,10 @@ header.top .wrap { display: flex; flex-wrap: wrap; align-items: end; justify-con
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .brand .logo { filter: drop-shadow(0 0 1px #fff) drop-shadow(0 0 1px #fff); } }
 :root[data-theme="dark"] .brand .logo { filter: drop-shadow(0 0 1px #fff) drop-shadow(0 0 1px #fff); }
 .brand h1 { margin: 0; font-family: var(--display); font-weight: 900; font-size: 28px; letter-spacing: .01em; color: #ffffff; text-shadow: 0 2px 0 rgba(0, 40, 22, .45); line-height: 1; text-wrap: balance; }
+.teampick { order: 2; margin-left: auto; align-self: center; margin-bottom: 10px; max-width: 240px; min-width: 0; font: inherit; font-size: 14px; font-weight: 700; color: var(--court); background: #fff; border: 2px solid var(--court); border-radius: 999px; padding: 7px 30px 7px 12px; appearance: none; -webkit-appearance: none; text-overflow: ellipsis; cursor: pointer;
+  background-image: linear-gradient(45deg, transparent 50%, var(--court) 50%), linear-gradient(135deg, var(--court) 50%, transparent 50%); background-position: right 14px center, right 9px center; background-size: 5px 5px; background-repeat: no-repeat; }
+.teampick:not(.set) { color: var(--muted); }
+nav.tabs { order: 3; }
 .brand small { display: block; font-size: 12px; font-weight: 600; letter-spacing: .04em; margin-top: 4px; }
 nav.tabs { display: flex; gap: 4px; }
 nav.tabs button { background: none; border: 0; color: inherit; opacity: .8; padding: 10px 12px 12px; font-family: var(--display); font-size: 15px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; cursor: pointer; border-bottom: 3px solid transparent; }
@@ -381,7 +385,8 @@ html.live-full header.top, html.live-full nav.tabs, html.live-full .foot, html.l
 }
 /* phones: app-style bottom tabs, bigger targets */
 @media (max-width: 640px) {
-  header.top .wrap { padding-block: 10px 10px; }
+  header.top .wrap { padding-block: 10px 10px; flex-wrap: nowrap; align-items: center; }
+  .teampick { margin-bottom: 0; max-width: 46vw; font-size: 13px; padding: 6px 26px 6px 10px; }
   .brand { padding-bottom: 0; }
   .brand small { display: none; }
   nav.tabs { position: fixed; left: 0; right: 0; bottom: 0; z-index: 20; display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 0; background: var(--court); color: #ffffff; padding: 0 env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px); box-shadow: 0 -2px 0 var(--ball); }
@@ -432,6 +437,7 @@ html.live-full header.top, html.live-full nav.tabs, html.live-full .foot, html.l
       <img class="logo" src="uon-sport-shield.png" alt="University of Nottingham Sport" width="36" height="41">
       <h1 id="leagueName">UoN IMS Volleyball</h1>
     </div>
+    <select id="myTeam" class="teampick" aria-label="Your team"><option value="">Select your team</option></select>
     <nav class="tabs" role="tablist">
       <button role="tab" id="tab-scores" aria-selected="true" data-view="scores">Fixtures</button>
       <button role="tab" id="tab-courts" aria-selected="false" data-view="courts">Courts</button>
@@ -1120,6 +1126,13 @@ if (typeof document !== "undefined") (function () {
     // the old default name counts as unset
     const nm = state.league && state.league.name && state.league.name !== "IMS Volleyball" ? state.league.name : "";
     $("#leagueName").textContent = nm || "UoN IMS Volleyball";
+    // team picker in the top bar; rebuilt only when the team list changes
+    const sel = $("#myTeam"), teams = allTeams(), sig = teams.join("|");
+    if (sel.dataset.sig !== sig) { sel.dataset.sig = sig; sel.replaceChildren(el("option", { value: "", text: "Select your team" }), ...teams.map(t => el("option", { value: t, text: t }))); }
+    const pick = teams.find(t => teamKey(t) === teamKey(state.myTeam)) || "";
+    if (sel.value !== pick) sel.value = pick;
+    sel.classList.toggle("set", !!pick);
+    if (!sel.dataset.wired) { sel.dataset.wired = "1"; sel.addEventListener("change", () => { state.myTeam = sel.value; store.set("ims-team", state.myTeam); sel.classList.toggle("set", !!sel.value); render(); }); }
     if (document.activeElement !== $("#nameInput")) $("#nameInput").value = (state.league && state.league.name) || "";
   }
   function renderBanner() {
@@ -1139,11 +1152,6 @@ if (typeof document !== "undefined") (function () {
         state.canAdmin ? el("p", {}, el("button", { class: "btn primary", style: "margin-top:14px", onclick: () => setView("setup"), text: "Go to Setup" })) : null));
       return;
     }
-    const tools = el("div", { class: "tools" });
-    const teamSel = el("select", { id: "myTeam", class: "search", "aria-label": "My team" }, el("option", { value: "", text: "Select your team" }), allTeams().map(t => el("option", { value: t, text: t, selected: teamKey(t) === teamKey(state.myTeam) })));
-    teamSel.addEventListener("change", () => { state.myTeam = teamSel.value; store.set("ims-team", state.myTeam); renderScoresBody(); });
-    tools.append(teamSel);
-    v.append(tools);
 
     const strip = el("div", { class: "weeks", role: "group", "aria-label": "Weeks", id: "weekStrip" });
     const multiStage = new Set(state.weeks.map(w => w.stage || "")).size > 1;
