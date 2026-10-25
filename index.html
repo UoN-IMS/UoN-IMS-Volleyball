@@ -1717,8 +1717,7 @@ if (typeof document !== "undefined") (function () {
     const hallList = [...halls.entries()].sort((a, b) => hallMax(b) - hallMax(a) || a[0].localeCompare(b[0]));
     hallList.forEach(([hall, courts], hi) => {
       const stack = el("div", { class: "hstack" });
-      const up = Math.max(...courts.keys()) >= 4;
-      for (const [n, games] of [...courts.entries()].sort((a, b) => up ? a[0] - b[0] : b[0] - a[0])) {
+      for (const [n, games] of [...courts.entries()].sort((a, b) => b[0] - a[0])) {
         const list = games.filter(m => !m.free).sort((a, b) => clock(a.time) - clock(b.time));
         const freeNote = games.find(m => m.free);
         const show = list.find(m => m.time === slot) || null;
