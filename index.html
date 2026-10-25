@@ -79,6 +79,30 @@ nav.tabs { display: flex; gap: 4px; }
 nav.tabs button { background: none; border: 0; color: inherit; opacity: .8; padding: 10px 12px 12px; font-family: var(--display); font-size: 15px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; cursor: pointer; border-bottom: 3px solid transparent; }
 nav.tabs button[aria-selected="true"] { opacity: 1; border-bottom-color: var(--header-ink); }
 nav.tabs button:hover { opacity: 1; }
+.hall { margin-top: 16px; }
+.hall h3 { font-family: var(--display); font-size: 15px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin: 0 0 8px; }
+.cgrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; padding: 8px; border: 2px solid var(--court); border-radius: var(--radius); background: color-mix(in srgb, var(--court) 6%, transparent); }
+.ctile { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 8px; display: grid; gap: 6px; align-content: start; min-width: 0; font-size: 13px; }
+.ctile.mine { border-color: var(--ball); box-shadow: 0 0 0 2px var(--ball); }
+.ctile.free { background: transparent; border-style: dashed; }
+.cname { display: flex; align-items: baseline; justify-content: space-between; gap: 4px; }
+.cname b { font-family: var(--display); font-size: 16px; }
+.cname span { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+.cfree, .cidle, .cnext.last { color: var(--muted); font-size: 12px; }
+.cnow { cursor: pointer; background: var(--court); color: var(--court-ink); border-radius: 6px; padding: 6px 7px; display: grid; gap: 3px; position: relative; }
+.cnow small, .cnext small { font-size: 10px; text-transform: uppercase; letter-spacing: .06em; opacity: .85; font-weight: 700; }
+.cteams { display: grid; font-weight: 700; line-height: 1.2; overflow-wrap: anywhere; }
+.cteams .v { font-weight: 400; opacity: .7; font-size: 11px; }
+.cteams.sm { font-size: 12px; font-weight: 600; display: block; }
+.cscore { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
+.cscore b { font-family: var(--display); font-size: 22px; font-variant-numeric: tabular-nums; }
+.cscore span { font-size: 11px; opacity: .85; }
+.cscore .dot { width: 8px; height: 8px; border-radius: 50%; background: #ff5a4f; position: absolute; top: 8px; right: 8px; animation: pulse 1.4s infinite; }
+@keyframes pulse { 50% { opacity: .3; } }
+.cnow.mine, .cnext.mine { outline: 2px solid var(--ball); outline-offset: 1px; }
+.cnext { display: grid; gap: 2px; color: var(--ink); }
+.mybanner { display: grid; gap: 2px; background: var(--ball-soft); border: 1px solid var(--ball); border-radius: 8px; padding: 10px 12px; margin-top: 8px; }
+@media (max-width: 480px) { .cgrid { gap: 5px; padding: 5px; } .ctile { padding: 6px; font-size: 12px; } .cname span { display: none; } .cscore b { font-size: 19px; } }
 
 main { padding-block: 20px 60px; }
 .notice { display: flex; gap: 10px; align-items: flex-start; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 14px; color: var(--muted); font-size: 14px; margin-bottom: 16px; }
@@ -395,6 +419,7 @@ html.live-full header.top, html.live-full nav.tabs, html.live-full .foot, html.l
     </div>
     <nav class="tabs" role="tablist">
       <button role="tab" id="tab-scores" aria-selected="true" data-view="scores">Fixtures</button>
+      <button role="tab" id="tab-courts" aria-selected="false" data-view="courts">Courts</button>
       <button role="tab" id="tab-live" aria-selected="false" data-view="live">Live score</button>
       <button role="tab" id="tab-standings" aria-selected="false" data-view="standings">Standings</button>
       <button role="tab" id="tab-setup" aria-selected="false" data-view="setup" hidden>Setup</button>
@@ -405,6 +430,7 @@ html.live-full header.top, html.live-full nav.tabs, html.live-full .foot, html.l
 <main class="wrap">
   <div id="banner"></div>
   <div id="view-scores"></div>
+  <div id="view-courts" class="courtsview" hidden></div>
   <div id="view-live" class="live" hidden></div>
   <div id="view-standings" class="standings" hidden></div>
   <div id="view-setup" class="setup" hidden>
@@ -941,13 +967,13 @@ if (typeof document !== "undefined") (function () {
   function setView(v) {
     state.view = v;
     document.querySelectorAll("nav.tabs button").forEach(b => b.setAttribute("aria-selected", String(b.dataset.view === v)));
-    for (const k of ["scores", "live", "standings", "setup"]) $("#view-" + k).hidden = k !== v;
+    for (const k of ["scores", "courts", "live", "standings", "setup"]) $("#view-" + k).hidden = k !== v;
     document.body.classList.toggle("in-live", v === "live");
     if (v === "live") keepAwake(); else { releaseAwake(); if (state.liveFull) { state.liveFull = false; try { if (document.fullscreenElement) document.exitFullscreen().catch(() => {}); } catch (e) {} $("#view-live").classList.remove("full"); document.documentElement.classList.remove("live-full"); } }
     render();
   }
   const h0 = location.hash.slice(1);
-  if (h0 === "standings" || h0 === "setup" || h0 === "live") state.view = h0;
+  if (h0 === "standings" || h0 === "setup" || h0 === "live" || h0 === "courts") state.view = h0;
   if (h0 === "organiser") state.orgOpen = true;
 
   /* ---------- data ---------- */
@@ -969,6 +995,7 @@ if (typeof document !== "undefined") (function () {
     db.collection("live").limit(1000).onSnapshot(s => {
       const next = {}; for (const d of s.docs) next[d.id] = d.data();
       const was = JSON.stringify(state.live || {}); state.live = next;
+      if (state.view === "courts" && was !== JSON.stringify(next)) renderCourts();
       if (state.view === "live" && state.liveId && JSON.stringify(next[state.liveId] || null) !== JSON.stringify(JSON.parse(was)[state.liveId] || null)) renderLive();
     }, e => console.warn(e));
     db.collection("requests").limit(1000).onSnapshot(s => {
@@ -1071,6 +1098,7 @@ if (typeof document !== "undefined") (function () {
     if (state.view === "scores") renderScores();
     else if (state.view === "standings") renderStandings();
     else if (state.view === "live") renderLive();
+    else if (state.view === "courts") renderCourts();
     else renderSetup();
   }
   function renderHeader() {
@@ -1572,6 +1600,73 @@ if (typeof document !== "undefined") (function () {
     const now = ukNow();
     return now < win.from ? "early" : now > win.to ? "late" : "open";
   }
+  /* ---------- courts map: what's on each court now, and who's next ---------- */
+  function renderCourts() {
+    const v = $("#view-courts"); if (!v) return;
+    const curId = currentWeekId() || state.week;
+    const w = state.weeks.find(x => x.id === curId) || state.weeks[0];
+    if (!w) { v.replaceChildren(el("div", { class: "empty" }, el("p", { text: "No fixtures yet." }))); return; }
+    const d = weekDate(w), now = ukNow();
+    const ko = m => { const t = String(m.time || "").match(/(\d{1,2})[:.](\d{2})/); return d && t ? Date.UTC(d.getFullYear(), d.getMonth(), d.getDate(), Number(t[1]), Number(t[2])) : null; };
+    const len = m => (Number(m.duration || w.duration) || SLOT_MIN) * 60000;
+    const today = d && new Date(now).toISOString().slice(0, 10) === new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate())).toISOString().slice(0, 10);
+    // courts by hall; a hall's missing court numbers show as free
+    const halls = new Map();
+    for (const m of w.matches || []) {
+      const cp = courtParts(m.court); const n = Number((cp.court.match(/(\d+)/) || [])[1]);
+      if (!cp.hall || !n) continue;
+      if (!halls.has(cp.hall)) halls.set(cp.hall, new Map());
+      const h = halls.get(cp.hall); if (!h.has(n)) h.set(n, []); h.get(n).push(m);
+    }
+    for (const h of halls.values()) { const ns = [...h.keys()]; const lo = Math.min(...ns) <= 3 ? 1 : 4, hi = lo + 2; for (let n = lo; n <= hi; n++) if (!h.has(n)) h.set(n, []); }
+    const myT = state.myTeam && teamKey(state.myTeam);
+    const isMine = m => myT && (teamKey(m.home) === myT || teamKey(m.away) === myT);
+    const liveLine = m => {
+      const sc = scoreOf(m);
+      if (sc && scoreResult(sc).complete) { const r = scoreResult(sc); return el("div", { class: "cscore done" }, el("b", { text: `${r.setsA}–${r.setsB}` }), el("span", { text: sc.forfeit ? "Forfeit" : "Final" })); }
+      const L = liveOf(m);
+      if (L && Array.isArray(L.cur)) {
+        const done = Array.isArray(L.done) ? L.done : [];
+        const sA = done.filter(x => x[0] > x[1]).length, sB = done.filter(x => x[1] > x[0]).length;
+        return el("div", { class: "cscore on" }, el("b", { text: `${L.cur[0]}–${L.cur[1]}` }), el("span", { text: `Set ${done.length + 1}${done.length ? ` · sets ${sA}–${sB}` : ""}` }), el("i", { class: "dot", "aria-label": "live" }));
+      }
+      return null;
+    };
+    let myNext = null;
+    const hallEls = [];
+    for (const [hall, courts] of [...halls.entries()].sort((a, b) => a[0].localeCompare(b[0]))) {
+      const grid = el("div", { class: "cgrid" });
+      for (const [n, games] of [...courts.entries()].sort((a, b) => a[0] - b[0])) {
+        const list = games.filter(m => !m.free).sort((a, b) => clock(a.time) - clock(b.time));
+        const freeNote = games.find(m => m.free);
+        const tile = el("div", { class: "ctile" }, el("div", { class: "cname" }, el("b", { text: "Court " + n })));
+        if (!list.length) { tile.classList.add("free"); tile.append(el("div", { class: "cfree", text: freeNote && freeNote.note ? "Free court · " + freeNote.note : "Free court" })); grid.append(tile); continue; }
+        // now = the latest game that has started (or starts within 5 min) and hasn't long finished
+        let cur = null, next = null;
+        for (const m of list) { const k = ko(m); if (k == null) continue; if (today && k - 5 * 60000 <= now) cur = m; else if (!next) next = m; }
+        if (cur && now > ko(cur) + len(cur) + 20 * 60000) cur = null;
+        if (!today) { cur = null; next = list[0]; }
+        if (cur) {
+          const box = el("div", { class: "cnow" + (isMine(cur) ? " mine" : "") }, el("small", { text: `Now · ${cur.time}` }),
+            el("div", { class: "cteams" }, el("span", { text: cur.home }), el("span", { class: "v", text: "v" }), el("span", { text: cur.away })), liveLine(cur));
+          box.addEventListener("click", () => { state.liveId = cur.id; setView("live"); window.scrollTo(0, 0); });
+          tile.append(box);
+        } else if (!next) tile.append(el("div", { class: "cidle", text: "Nothing on right now" }));
+        if (next) tile.append(el("div", { class: "cnext" + (isMine(next) ? " mine" : "") }, el("small", { text: `Next · ${next.time}` }), el("div", { class: "cteams sm", text: `${next.home} v ${next.away}` })));
+        else if (cur) tile.append(el("div", { class: "cnext last", text: "Last game on this court" }));
+        if (myT && !myNext) { const mm = list.find(m => isMine(m) && !hasResult(m)); if (mm) myNext = { m: mm, hall, n }; }
+        if (list.some(isMine)) tile.classList.add("mine");
+        grid.append(tile);
+      }
+      hallEls.push(el("section", { class: "hall" }, el("h3", { text: hall }), grid));
+    }
+    const head = el("div", { class: "weekhead" }, el("div", {}, el("div", { class: "eyebrow", text: today ? "Live now" : "Courts" }), el("h2", { text: today ? "On court" : (w.date || w.label) })),
+      el("div", { class: "meta", text: today ? `${w.date || w.label} · updates by itself` : "Where everyone plays" }));
+    const mine = myNext ? el("div", { class: "mybanner" }, el("b", { text: `${state.myTeam}: ${myNext.m.time} · ${myNext.hall} · Court ${myNext.n}` }), el("span", { text: `v ${teamKey(myNext.m.home) === myT ? myNext.m.away : myNext.m.home}` }))
+      : el("p", { class: "searchnote", text: "Tip: set My team on the Fixtures page and your court is highlighted here." });
+    v.replaceChildren(head, mine, ...hallEls);
+  }
+
   function findMatch(id) { for (const w of state.weeks) for (const m of w.matches || []) if (m.id === id) return { m, w }; return null; }
   const setsWon = (L, side) => L.done.filter(([a, b]) => (side === 0 ? a > b : b > a)).length;
   const matchOver = L => setsWon(L, 0) === 2 || setsWon(L, 1) === 2;
@@ -2060,6 +2155,7 @@ if (typeof document !== "undefined") (function () {
 
   // the scoring window opens and closes on its own
   setInterval(() => { if (state.view === "live" && document.visibilityState === "visible" && (state.winWait || !state.liveId)) renderLive(); }, 30000);
+  setInterval(() => { if (state.view === "courts" && document.visibilityState === "visible") renderCourts(); }, 30000);
   boot();
 })();
 </script>
