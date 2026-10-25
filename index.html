@@ -93,11 +93,10 @@ nav.tabs button:hover { opacity: 1; }
 .vcourt { position: relative; aspect-ratio: 2.5 / 1; border-radius: 6px; cursor: pointer; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; color: #fff; overflow: hidden;
   background:
     linear-gradient(90deg, transparent calc(33.3% - 1px), rgba(255,255,255,.55) calc(33.3% - 1px) calc(33.3% + 1px), transparent calc(33.3% + 1px) calc(66.7% - 1px), rgba(255,255,255,.55) calc(66.7% - 1px) calc(66.7% + 1px), transparent calc(66.7% + 1px)),
-    #c8743a;
-  box-shadow: inset 0 0 0 3px #fff, 0 0 0 6px #2f7f5a; margin: 6px; }
+    #b1805f;
+  box-shadow: inset 0 0 0 3px #fff, 0 0 0 6px #4f7d64; margin: 6px; }
 .vcourt::after { content: ""; position: absolute; top: -6px; bottom: -6px; left: calc(50% - 2px); width: 4px; background: #fff; box-shadow: 0 0 0 1px rgba(0,0,0,.25); }
 .vcourt.free { cursor: default; grid-template-columns: 1fr; }
-.vcourt.soon { filter: saturate(.55) brightness(1.05); }
 .vcourt.mine { box-shadow: inset 0 0 0 3px #fff, 0 0 0 6px var(--ball); }
 .cno { position: absolute; left: 8px; top: 6px; font-family: var(--display); font-weight: 800; font-size: 13px; background: rgba(0,0,0,.35); color: #fff; border-radius: 4px; padding: 0 6px; z-index: 2; }
 .vfree { display: grid; gap: 2px; text-align: center; position: relative; z-index: 2; justify-self: center; padding: 6px 14px; border-radius: 10px; background: #005F36; color: #fff; box-shadow: 0 2px 6px rgba(0,0,0,.25); }
