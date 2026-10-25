@@ -130,6 +130,7 @@ main { padding-block: 20px 60px; }
 .mrow .when { display: flex; flex-direction: column; line-height: 1.15; font-variant-numeric: tabular-nums; }
 .mrow .when b { font-family: var(--display); font-size: 15px; }
 .mrow .when small { font-size: 11px; color: var(--muted); white-space: nowrap; }
+.mrow .when small.hall { color: var(--ink); font-weight: 700; }
 .mrow .vs { min-width: 0; font-weight: 600; line-height: 1.3; overflow-wrap: anywhere; }
 .mrow .vs .v { color: var(--muted); font-weight: 400; }
 .mrow .nm.won { color: var(--win); }
@@ -1188,9 +1189,9 @@ if (typeof document !== "undefined") (function () {
     const req = state.requests[m.id];
     const isAdmin = can && state.canAdmin;
     if (m.free) {
-      const short = String(m.court || "").replace(/^Hall ([A-Z])\s*·\s*Court\s*/i, "Hall $1 · ");
+      const short = courtParts(m.court);
       return el("article", { class: "match line free", "data-id": m.id }, el(isAdmin ? "button" : "div", { type: "button", class: "mrow", onclick: isAdmin ? () => startEdit(findMatch(m.id).w, m) : null },
-        el("span", { class: "when" }, el("b", { text: m.time || "" }), el("small", { text: short })),
+        el("span", { class: "when" }, el("b", { text: m.time || "" }), short.hall ? el("small", { class: "hall", text: short.hall }) : null, el("small", { text: short.court })),
         el("span", { class: "vs" }, el("span", { class: "v", text: "Free court" }), m.note ? el("small", { class: "fnote", text: " · " + m.note }) : null),
         isAdmin ? el("span", { class: "chev", text: "Edit" }) : el("span")));
     }
@@ -1202,10 +1203,10 @@ if (typeof document !== "undefined") (function () {
       // one line per game; tap it to open
       const fin = saved && r.complete;
       const open = !!state.open[m.id];
-      const short = String(m.court || "").replace(/^Hall ([A-Z])\s*·\s*Court\s*/i, "Hall $1 · ");
+      const short = courtParts(m.court);
       const nm = (side, name) => el("span", { class: "nm" + (fin && r.winner === side ? " won" : ""), text: name });
       const row = el("button", { type: "button", class: "mrow", "aria-expanded": String(open), onclick: toggle },
-        el("span", { class: "when" }, el("b", { text: m.time || "" }), el("small", { text: short })),
+        el("span", { class: "when" }, el("b", { text: m.time || "" }), short.hall ? el("small", { class: "hall", text: short.hall }) : null, el("small", { text: short.court })),
         el("span", { class: "vs" }, nm("A", m.home), el("span", { class: "v", text: " v " }), nm("B", m.away), ...tags()),
         fin ? el("span", { class: "sc", text: `${r.setsA}–${r.setsB}` }) : el("span", { class: "chev", "aria-hidden": "true", text: open ? "▴" : "▾" }));
       const card = el("article", { class: "match line" + (open ? " open" : "") + (mine(m) ? " mine" : ""), "data-id": m.id }, row);
@@ -1319,6 +1320,8 @@ if (typeof document !== "undefined") (function () {
   }
 
   /* ---------- organiser: edit a game ---------- */
+  // "Hall B · Court 2" -> { hall: "Hall B", court: "Court 2" }
+  function courtParts(c) { const x = String(c || "").match(/^(Hall [A-Z])\s*·\s*(.+)$/i); return x ? { hall: x[1], court: x[2] } : { hall: "", court: String(c || "") }; }
   const COURTS = ["Hall C · Court 1", "Hall C · Court 2", "Hall C · Court 3", "Hall D · Court 4", "Hall D · Court 5", "Hall D · Court 6",
     "Hall B · Court 1", "Hall B · Court 2", "Hall B · Court 3", "Hall C · Court 4", "Hall C · Court 5", "Hall C · Court 6"];
   function startEdit(w, m) {
