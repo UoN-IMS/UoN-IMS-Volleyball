@@ -974,7 +974,7 @@ if (typeof document !== "undefined") (function () {
   const state = {
     db: null, user: null, canWrite: null, canAdmin: false, ready: false, noDb: false, myId: null,
     league: {}, weeks: [], scores: {}, view: "scores", week: null, stage: null,
-    filter: store.get("ims-filter"), myTeam: store.get("ims-team"),
+    filter: "", myTeam: store.get("ims-team"),
     drafts: {}, saving: {}, errors: {}, mode: {}, open: {}, requests: {}, edit: null, ask: {}, preview: null, importMode: "merge", importStage: "", readOnly: false
   };
 
@@ -1141,11 +1141,9 @@ if (typeof document !== "undefined") (function () {
       return;
     }
     const tools = el("div", { class: "tools" });
-    const search = el("input", { class: "search", id: "teamFilter", type: "search", placeholder: "Search team, date or time", "aria-label": "Search fixtures by team, date or time", value: state.filter });
-    search.addEventListener("input", () => { state.filter = search.value; store.set("ims-filter", state.filter); renderScoresBody(); });
     const teamSel = el("select", { id: "myTeam", class: "search", "aria-label": "My team" }, el("option", { value: "", text: "My team: not set" }), allTeams().map(t => el("option", { value: t, text: "My team: " + t, selected: teamKey(t) === teamKey(state.myTeam) })));
     teamSel.addEventListener("change", () => { state.myTeam = teamSel.value; store.set("ims-team", state.myTeam); renderScoresBody(); });
-    tools.append(search, teamSel);
+    tools.append(teamSel);
     v.append(tools);
 
     const strip = el("div", { class: "weeks", role: "group", "aria-label": "Weeks", id: "weekStrip" });
