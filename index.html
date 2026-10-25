@@ -103,11 +103,14 @@ nav.tabs button:hover { opacity: 1; }
 .vcourt::after { content: ""; position: absolute; top: -6px; bottom: -6px; left: calc(50% - 2px); width: 4px; background: #fff; box-shadow: 0 0 0 1px rgba(0,0,0,.25); }
 .vcourt.free { cursor: default; grid-template-columns: 1fr; }
 .vcourt.mine { box-shadow: inset 0 0 0 3px #fff, 0 0 0 6px var(--ball); }
-.cno { position: absolute; left: 8px; top: 6px; font-family: var(--display); font-weight: 800; font-size: 13px; background: rgba(0,0,0,.35); color: #fff; border-radius: 4px; padding: 0 6px; z-index: 2; }
+.cno { position: absolute; left: 7px; top: 7px; display: flex; align-items: baseline; gap: 4px; font-family: var(--display); font-weight: 900; font-size: 24px; line-height: 1; background: #fff; color: var(--court); border-radius: 6px; padding: 3px 8px 4px; z-index: 2; box-shadow: 0 1px 3px rgba(0,0,0,.25); }
+.cno small { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; }
+.entrance { max-width: 560px; margin: 14px auto 0; text-align: center; }
+.entrance span { display: block; background: var(--court); color: #fff; font-family: var(--display); font-weight: 800; font-size: 14px; letter-spacing: .14em; text-transform: uppercase; padding: 7px 0; border-radius: 6px; }
 .vfree { display: grid; gap: 2px; text-align: center; position: relative; z-index: 2; justify-self: center; padding: 6px 14px; border-radius: 10px; background: #005F36; color: #fff; box-shadow: 0 2px 6px rgba(0,0,0,.25); }
 .vfree b { font-family: var(--display); font-size: 17px; }
 .vfree span { font-size: 12px; font-weight: 600; }
-.vside { display: grid; justify-items: center; gap: 2px; padding: 14px 8px 6px; text-align: center; min-width: 0; text-shadow: 0 1px 2px rgba(0,0,0,.45); }
+.vside { display: grid; justify-items: center; gap: 2px; padding: 26px 8px 6px; text-align: center; min-width: 0; text-shadow: 0 1px 2px rgba(0,0,0,.45); }
 .vname { font-weight: 800; font-size: 15px; line-height: 1.15; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 .vpts { font-family: var(--display); font-size: 34px; line-height: 1; font-variant-numeric: tabular-nums; }
 .vside.won .vpts { color: var(--ball); }
@@ -1689,10 +1692,13 @@ if (typeof document !== "undefined") (function () {
     const slotStarted = today && slot && ko((w.matches || []).find(m => m.time === slot)) - 5 * 60000 <= now;
     let myNext = null, myHall = -1;
     const slides = [];
-    const hallList = [...halls.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+    // as laid out on the day: the hall with courts 4-6 first (4, 5, 6), then courts 3, 2, 1, entrance at the bottom
+    const hallMax = h => Math.max(...h[1].keys());
+    const hallList = [...halls.entries()].sort((a, b) => hallMax(b) - hallMax(a) || a[0].localeCompare(b[0]));
     hallList.forEach(([hall, courts], hi) => {
       const stack = el("div", { class: "hstack" });
-      for (const [n, games] of [...courts.entries()].sort((a, b) => a[0] - b[0])) {
+      const up = Math.max(...courts.keys()) >= 4;
+      for (const [n, games] of [...courts.entries()].sort((a, b) => up ? a[0] - b[0] : b[0] - a[0])) {
         const list = games.filter(m => !m.free).sort((a, b) => clock(a.time) - clock(b.time));
         const freeNote = games.find(m => m.free);
         const show = list.find(m => m.time === slot) || null;
@@ -1700,7 +1706,7 @@ if (typeof document !== "undefined") (function () {
         const nextSlot = slotTimes.find(t => clock(t) > clock(slot)) || null;
         const after = nextSlot ? list.find(m => m.time === nextSlot) || null : null;
         const vc = el("div", { class: "vcourt" + (!show ? " free" : "") + (show && isMine(show) ? " mine" : "") + (show && show !== cur ? " soon" : "") });
-        vc.append(el("span", { class: "cno", text: String(n) }));
+        vc.append(el("span", { class: "cno" }, el("small", { text: "Court" }), String(n)));
         if (!show) vc.append(el("div", { class: "vfree" }, el("b", { text: "🏐 Free court" }), el("span", { text: freeNote && freeNote.note ? freeNote.note : "Warm up, pepper and watch" })));
         else {
           const sc = cur ? (scoreOn(cur) || { a: 0, b: 0, mid: "Set 1", live: false }) : null;
@@ -1717,7 +1723,7 @@ if (typeof document !== "undefined") (function () {
         stack.append(el("div", { class: "vwrap" }, vc, foot));
         if (myT && !myNext) { const mm = list.find(m => isMine(m) && !hasResult(m)); if (mm) { myNext = { m: mm, hall, n }; myHall = hi; } }
       }
-      slides.push(el("section", { class: "hslide", "aria-label": hall }, el("h3", { class: "htitle", text: hall }), stack));
+      slides.push(el("section", { class: "hslide", "aria-label": hall }, el("h3", { class: "htitle", text: hall }), stack, el("div", { class: "entrance" }, el("span", { text: "▼  Entrance  ▼" }))));
     });
     const head = el("p", { class: "chead" }, el("span", { text: slot ? `${slot} games` : "" }), el("span", { text: w.date || w.label }));
     const mine = myNext ? el("button", { type: "button", class: "mybanner", onclick: () => goHall(myHall, true) }, el("span", { class: "mylabel", text: `${state.myTeam}'s game` }), el("b", { text: `${myNext.m.time} · ${myNext.hall} · Court ${myNext.n}` }), el("span", { text: `v ${teamKey(myNext.m.home) === myT ? myNext.m.away : myNext.m.home}` }))
