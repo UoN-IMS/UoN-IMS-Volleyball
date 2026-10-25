@@ -7,11 +7,16 @@
 --    scores/<id>   a match result
 --    live/<id>     a live count saved mid-match so another phone can carry on
 --    config/league the league name (organiser only)
+--    requests/<id> a team's forfeit request, which the organiser approves or rejects
 create table if not exists public.docs (
-  path text primary key check (path ~ '^(weeks|scores|live|config)/[A-Za-z0-9_.-]{1,160}$'),
+  path text primary key check (path ~ '^(weeks|scores|live|config|requests)/[A-Za-z0-9_.-]{1,160}$'),
   data jsonb not null,
   updated_at timestamptz not null default now()
 );
+
+-- older setups: allow the requests/ paths too
+alter table public.docs drop constraint if exists docs_path_check;
+alter table public.docs add constraint docs_path_check check (path ~ '^(weeks|scores|live|config|requests)/[A-Za-z0-9_.-]{1,160}$');
 
 -- 2. Organisers. Add yourself with the line in README step 3.
 create table if not exists public.admins (
@@ -102,6 +107,9 @@ begin
     -- keep only what a captain may send; names come from the fixture
     new.data := jsonb_build_object('sets', new.data -> 'sets', 'side', new.data ->> 'side',
       'home', fixture ->> 'home', 'away', fixture ->> 'away', 'status', 'pending', 'at', to_jsonb(now()));
+  elsif new.path like 'requests/%' then
+    if coalesce(new.data ->> 'team', '') not in ('A', 'B') then raise exception 'team must be A or B' using errcode = '22000'; end if;
+    new.data := jsonb_build_object('team', new.data ->> 'team', 'note', left(coalesce(new.data ->> 'note', ''), 200), 'at', to_jsonb(now()));
   end if;
   return new;
 end $$;
@@ -121,6 +129,7 @@ drop policy if exists "anyone updates live counts" on public.docs;
 drop policy if exists "anyone clears live counts" on public.docs;
 drop policy if exists "anyone sends a result" on public.docs;
 drop policy if exists "anyone resends an unconfirmed result" on public.docs;
+drop policy if exists "anyone requests a forfeit" on public.docs;
 drop policy if exists "organiser sees organisers" on public.admins;
 
 create policy "anyone reads" on public.docs for select using (true);
@@ -135,6 +144,9 @@ create policy "anyone clears live counts" on public.docs for delete to anon, aut
 -- the public can send a match's result once, as 'pending'; after that only the organiser can change it
 create policy "anyone sends a result" on public.docs for insert to anon, authenticated
   with check (path like 'scores/%' and data ->> 'status' = 'pending');
+-- a team can ask for a forfeit once per game; only the organiser can approve or clear it
+create policy "anyone requests a forfeit" on public.docs for insert to anon, authenticated
+  with check (path like 'requests/%');
 create policy "organiser sees organisers" on public.admins for select to authenticated
   using (user_id = auth.uid());
 
