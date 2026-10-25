@@ -881,14 +881,16 @@ window.imsBackend = (function () {
   function ready() {
     if (!loaded) {
       loaded = loadAll();
+      let live = false;
       sb.channel("docs").on("postgres_changes", { event: "*", schema: "public", table: "docs" }, p => {
         if (p.eventType === "DELETE") { if (p.old && p.old.path) cache.delete(p.old.path); }
         else if (p.new && p.new.path) cache.set(p.new.path, p.new.data);
         notify();
-      }).subscribe(status => { if (status === "SUBSCRIBED") loadAll().catch(() => {}); });
+      }).subscribe(status => { live = status === "SUBSCRIBED"; if (live) loadAll().catch(() => {}); });
       // catch anything realtime missed while the phone was asleep
       document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") loadAll().catch(() => {}); });
-      setInterval(() => { if (document.visibilityState === "visible") loadAll().catch(() => {}); }, 60000);
+      // changes are pushed while realtime is connected; only fall back to fetching everything when it isn't
+      setInterval(() => { if (!live && document.visibilityState === "visible") loadAll().catch(() => {}); }, 60000);
     }
     return loaded;
   }
