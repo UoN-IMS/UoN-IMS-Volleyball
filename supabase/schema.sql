@@ -155,7 +155,29 @@ revoke all on public.admins from anon;
 grant select on public.admins to authenticated;
 grant execute on function public.is_admin() to anon, authenticated;
 
--- 6. Live updates on everyone's screens.
+-- 6. Visit counter: one row per day and page, no ids or personal data. Only the organiser can read it.
+create table if not exists public.visits (
+  day date not null,
+  page text not null,
+  n integer not null default 0,
+  primary key (day, page)
+);
+alter table public.visits enable row level security;
+drop policy if exists "organiser reads visits" on public.visits;
+create policy "organiser reads visits" on public.visits for select to authenticated using (public.is_admin());
+revoke all on public.visits from anon;
+grant select on public.visits to authenticated;
+create or replace function public.ims_visit(p text) returns void
+language sql security definer set search_path = public as $$
+  insert into public.visits (day, page, n)
+  select (now() at time zone 'Europe/London')::date, p, 1
+  where p in ('site', 'scores', 'courts', 'live', 'standings')
+  on conflict (day, page) do update set n = public.visits.n + 1;
+$$;
+revoke all on function public.ims_visit(text) from public;
+grant execute on function public.ims_visit(text) to anon, authenticated;
+
+-- 7. Live updates on everyone's screens.
 do $$ begin
   alter publication supabase_realtime add table public.docs;
 exception when duplicate_object then null; end $$;
