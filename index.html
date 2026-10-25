@@ -1140,7 +1140,7 @@ if (typeof document !== "undefined") (function () {
       return;
     }
     const tools = el("div", { class: "tools" });
-    const teamSel = el("select", { id: "myTeam", class: "search", "aria-label": "My team" }, el("option", { value: "", text: "My team: not set" }), allTeams().map(t => el("option", { value: t, text: "My team: " + t, selected: teamKey(t) === teamKey(state.myTeam) })));
+    const teamSel = el("select", { id: "myTeam", class: "search", "aria-label": "My team" }, el("option", { value: "", text: "Select your team" }), allTeams().map(t => el("option", { value: t, text: t, selected: teamKey(t) === teamKey(state.myTeam) })));
     teamSel.addEventListener("change", () => { state.myTeam = teamSel.value; store.set("ims-team", state.myTeam); renderScoresBody(); });
     tools.append(teamSel);
     v.append(tools);
