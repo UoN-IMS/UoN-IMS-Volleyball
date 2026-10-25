@@ -79,30 +79,44 @@ nav.tabs { display: flex; gap: 4px; }
 nav.tabs button { background: none; border: 0; color: inherit; opacity: .8; padding: 10px 12px 12px; font-family: var(--display); font-size: 15px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; cursor: pointer; border-bottom: 3px solid transparent; }
 nav.tabs button[aria-selected="true"] { opacity: 1; border-bottom-color: var(--header-ink); }
 nav.tabs button:hover { opacity: 1; }
-.hall { margin-top: 16px; }
-.hall h3 { font-family: var(--display); font-size: 15px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin: 0 0 8px; }
-.cgrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; padding: 8px; border: 2px solid var(--court); border-radius: var(--radius); background: color-mix(in srgb, var(--court) 6%, transparent); }
-.ctile { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 8px; display: grid; gap: 6px; align-content: start; min-width: 0; font-size: 13px; }
-.ctile.mine { border-color: var(--ball); box-shadow: 0 0 0 2px var(--ball); }
-.ctile.free { background: transparent; border-style: dashed; }
-.cname { display: flex; align-items: baseline; justify-content: space-between; gap: 4px; }
-.cname b { font-family: var(--display); font-size: 16px; }
-.cname span { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
-.cfree, .cidle, .cnext.last { color: var(--muted); font-size: 12px; }
-.cnow { cursor: pointer; background: var(--court); color: var(--court-ink); border-radius: 6px; padding: 6px 7px; display: grid; gap: 3px; position: relative; }
-.cnow small, .cnext small { font-size: 10px; text-transform: uppercase; letter-spacing: .06em; opacity: .85; font-weight: 700; }
-.cteams { display: grid; font-weight: 700; line-height: 1.2; overflow-wrap: anywhere; }
-.cteams .v { font-weight: 400; opacity: .7; font-size: 11px; }
-.cteams.sm { font-size: 12px; font-weight: 600; display: block; }
-.cscore { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
-.cscore b { font-family: var(--display); font-size: 22px; font-variant-numeric: tabular-nums; }
-.cscore span { font-size: 11px; opacity: .85; }
-.cscore .dot { width: 8px; height: 8px; border-radius: 50%; background: #ff5a4f; position: absolute; top: 8px; right: 8px; animation: pulse 1.4s infinite; }
-@keyframes pulse { 50% { opacity: .3; } }
-.cnow.mine, .cnext.mine { outline: 2px solid var(--ball); outline-offset: 1px; }
-.cnext { display: grid; gap: 2px; color: var(--ink); }
-.mybanner { display: grid; gap: 2px; background: var(--ball-soft); border: 1px solid var(--ball); border-radius: 8px; padding: 10px 12px; margin-top: 8px; }
-@media (max-width: 480px) { .cgrid { gap: 5px; padding: 5px; } .ctile { padding: 6px; font-size: 12px; } .cname span { display: none; } .cscore b { font-size: 19px; } }
+.chead { margin: 4px 0 0; color: var(--muted); font-size: 14px; }
+.chead b { color: var(--ink); font-family: var(--display); font-size: 18px; }
+.hdots { display: flex; justify-content: center; gap: 8px; margin: 10px 0 0; }
+.hdots button { width: 9px; height: 9px; border-radius: 50%; border: 0; padding: 0; background: var(--line); cursor: pointer; }
+.hdots button.on { background: var(--court); width: 22px; border-radius: 5px; }
+.hscroll { display: grid; grid-auto-flow: column; grid-auto-columns: 100%; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; overscroll-behavior-x: contain; margin: 0 -2px; }
+.hscroll::-webkit-scrollbar { display: none; }
+.hslide { scroll-snap-align: start; padding: 0 2px; min-width: 0; }
+.htitle { display: flex; align-items: baseline; justify-content: space-between; font-family: var(--display); font-size: 22px; margin: 2px 0 6px; }
+.htitle small { font-family: inherit; font-size: 12px; color: var(--muted); font-weight: 600; }
+.hstack { display: grid; gap: 10px; max-width: 560px; }
+.vwrap { display: grid; gap: 5px; }
+.vcourt { position: relative; aspect-ratio: 2.5 / 1; border-radius: 6px; cursor: pointer; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; color: #fff; overflow: hidden;
+  background:
+    linear-gradient(90deg, transparent calc(33.3% - 1px), rgba(255,255,255,.55) calc(33.3% - 1px) calc(33.3% + 1px), transparent calc(33.3% + 1px) calc(66.7% - 1px), rgba(255,255,255,.55) calc(66.7% - 1px) calc(66.7% + 1px), transparent calc(66.7% + 1px)),
+    #c8743a;
+  box-shadow: inset 0 0 0 3px #fff, 0 0 0 6px #2f7f5a; margin: 6px; }
+.vcourt::after { content: ""; position: absolute; top: -6px; bottom: -6px; left: calc(50% - 2px); width: 4px; background: #fff; box-shadow: 0 0 0 1px rgba(0,0,0,.25); }
+.vcourt.free { background: #e4ddd2; box-shadow: inset 0 0 0 3px #fff, 0 0 0 6px #b9b2a6; cursor: default; color: var(--muted); grid-template-columns: 1fr; }
+.vcourt.free::after { background: rgba(255,255,255,.7); }
+.vcourt.soon { filter: saturate(.55) brightness(1.05); }
+.vcourt.mine { box-shadow: inset 0 0 0 3px #fff, 0 0 0 6px var(--ball); }
+.cno { position: absolute; left: 8px; top: 6px; font-family: var(--display); font-weight: 800; font-size: 13px; background: rgba(0,0,0,.35); color: #fff; border-radius: 4px; padding: 0 6px; z-index: 2; }
+.vfree { text-align: center; font-weight: 700; font-size: 15px; position: relative; z-index: 2; background: rgba(255,255,255,.75); justify-self: center; padding: 4px 10px; border-radius: 6px; }
+.vside { display: grid; justify-items: center; gap: 2px; padding: 14px 8px 6px; text-align: center; min-width: 0; text-shadow: 0 1px 2px rgba(0,0,0,.45); }
+.vname { font-weight: 800; font-size: 15px; line-height: 1.15; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.vpts { font-family: var(--display); font-size: 34px; line-height: 1; font-variant-numeric: tabular-nums; }
+.vside.won .vpts { color: var(--ball); }
+.vnet { position: relative; z-index: 2; display: grid; justify-items: center; gap: 1px; }
+.vvs { background: #fff; color: #2f5a44; font-family: var(--display); font-weight: 800; font-size: 13px; letter-spacing: .04em; border-radius: 999px; padding: 3px 8px; white-space: nowrap; }
+.vvs.live { background: #e0372c; color: #fff; animation: pulse 1.6s infinite; }
+.vnet small { background: rgba(0,0,0,.45); color: #fff; font-size: 10px; border-radius: 4px; padding: 0 4px; margin-top: 2px; white-space: nowrap; }
+@keyframes pulse { 50% { opacity: .6; } }
+.vnext { font-size: 13px; color: var(--muted); padding: 2px 8px 0; line-height: 1.3; }
+.vnext b { color: var(--ink); }
+.vnext.mine { color: var(--ink); background: var(--ball-soft); border-radius: 6px; padding: 4px 8px; }
+.mybanner { all: unset; box-sizing: border-box; cursor: pointer; display: grid; gap: 2px; width: 100%; background: var(--ball-soft); border: 1px solid var(--ball); border-radius: 8px; padding: 8px 12px; margin-top: 8px; color: var(--ink); font-size: 14px; }
+@media (max-width: 380px) { .vname { font-size: 13px; } .vpts { font-size: 28px; } }
 
 main { padding-block: 20px 60px; }
 .notice { display: flex; gap: 10px; align-items: flex-start; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 14px; color: var(--muted); font-size: 14px; margin-bottom: 16px; }
@@ -1621,50 +1635,66 @@ if (typeof document !== "undefined") (function () {
     for (const h of halls.values()) { const ns = [...h.keys()]; const lo = Math.min(...ns) <= 3 ? 1 : 4, hi = lo + 2; for (let n = lo; n <= hi; n++) if (!h.has(n)) h.set(n, []); }
     const myT = state.myTeam && teamKey(state.myTeam);
     const isMine = m => myT && (teamKey(m.home) === myT || teamKey(m.away) === myT);
-    const liveLine = m => {
+    // the numbers shown on each half: live points, or sets once a result is in
+    const scoreOn = m => {
       const sc = scoreOf(m);
-      if (sc && scoreResult(sc).complete) { const r = scoreResult(sc); return el("div", { class: "cscore done" }, el("b", { text: `${r.setsA}–${r.setsB}` }), el("span", { text: sc.forfeit ? "Forfeit" : "Final" })); }
+      if (sc && scoreResult(sc).complete) { const r = scoreResult(sc); return { a: r.setsA, b: r.setsB, mid: sc.forfeit ? "Forfeit" : "Final", fin: true, win: r.winner }; }
       const L = liveOf(m);
       if (L && Array.isArray(L.cur)) {
         const done = Array.isArray(L.done) ? L.done : [];
         const sA = done.filter(x => x[0] > x[1]).length, sB = done.filter(x => x[1] > x[0]).length;
-        return el("div", { class: "cscore on" }, el("b", { text: `${L.cur[0]}–${L.cur[1]}` }), el("span", { text: `Set ${done.length + 1}${done.length ? ` · sets ${sA}–${sB}` : ""}` }), el("i", { class: "dot", "aria-label": "live" }));
+        return { a: L.cur[0], b: L.cur[1], mid: `Set ${done.length + 1}`, sets: done.length ? `${sA}–${sB}` : "", live: true };
       }
       return null;
     };
-    let myNext = null;
-    const hallEls = [];
-    for (const [hall, courts] of [...halls.entries()].sort((a, b) => a[0].localeCompare(b[0]))) {
-      const grid = el("div", { class: "cgrid" });
+    let myNext = null, myHall = -1;
+    const slides = [];
+    const hallList = [...halls.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+    hallList.forEach(([hall, courts], hi) => {
+      const stack = el("div", { class: "hstack" });
       for (const [n, games] of [...courts.entries()].sort((a, b) => a[0] - b[0])) {
         const list = games.filter(m => !m.free).sort((a, b) => clock(a.time) - clock(b.time));
         const freeNote = games.find(m => m.free);
-        const tile = el("div", { class: "ctile" }, el("div", { class: "cname" }, el("b", { text: "Court " + n })));
-        if (!list.length) { tile.classList.add("free"); tile.append(el("div", { class: "cfree", text: freeNote && freeNote.note ? "Free court · " + freeNote.note : "Free court" })); grid.append(tile); continue; }
-        // now = the latest game that has started (or starts within 5 min) and hasn't long finished
         let cur = null, next = null;
         for (const m of list) { const k = ko(m); if (k == null) continue; if (today && k - 5 * 60000 <= now) cur = m; else if (!next) next = m; }
         if (cur && now > ko(cur) + len(cur) + 20 * 60000) cur = null;
         if (!today) { cur = null; next = list[0]; }
-        if (cur) {
-          const box = el("div", { class: "cnow" + (isMine(cur) ? " mine" : "") }, el("small", { text: `Now · ${cur.time}` }),
-            el("div", { class: "cteams" }, el("span", { text: cur.home }), el("span", { class: "v", text: "v" }), el("span", { text: cur.away })), liveLine(cur));
-          box.addEventListener("click", () => { state.liveId = cur.id; setView("live"); window.scrollTo(0, 0); });
-          tile.append(box);
-        } else if (!next) tile.append(el("div", { class: "cidle", text: "Nothing on right now" }));
-        if (next) tile.append(el("div", { class: "cnext" + (isMine(next) ? " mine" : "") }, el("small", { text: `Next · ${next.time}` }), el("div", { class: "cteams sm", text: `${next.home} v ${next.away}` })));
-        else if (cur) tile.append(el("div", { class: "cnext last", text: "Last game on this court" }));
-        if (myT && !myNext) { const mm = list.find(m => isMine(m) && !hasResult(m)); if (mm) myNext = { m: mm, hall, n }; }
-        if (list.some(isMine)) tile.classList.add("mine");
-        grid.append(tile);
+        // before a court's first game, draw that game on it as "up next"
+        const show = cur || (next && !list.some(m => ko(m) != null && ko(m) - 5 * 60000 <= now) ? next : null);
+        const after = show === next ? list[list.indexOf(next) + 1] || null : next;
+        const vc = el("div", { class: "vcourt" + (!list.length ? " free" : "") + (show && isMine(show) ? " mine" : "") + (show && show !== cur ? " soon" : "") });
+        vc.append(el("span", { class: "cno", text: String(n) }));
+        if (!list.length) vc.append(el("div", { class: "vfree", text: freeNote && freeNote.note ? "Free court · " + freeNote.note : "Free court" }));
+        else if (!show) vc.append(el("div", { class: "vfree", text: "No game right now" }));
+        else {
+          const sc = cur ? scoreOn(cur) : null;
+          const side = (name, pts, won) => el("div", { class: "vside" + (won ? " won" : "") }, el("span", { class: "vname", text: name }), pts != null ? el("b", { class: "vpts", text: String(pts) }) : null);
+          vc.append(side(show.home, sc ? sc.a : null, sc && sc.fin && sc.win === "A"),
+            el("div", { class: "vnet" }, el("span", { class: "vvs" + (sc && sc.live ? " live" : "") }, sc ? sc.mid : show === cur ? "VS" : show.time), sc && sc.sets ? el("small", { text: "sets " + sc.sets }) : null),
+            side(show.away, sc ? sc.b : null, sc && sc.fin && sc.win === "B"));
+          vc.addEventListener("click", () => { state.liveId = show.id; setView("live"); window.scrollTo(0, 0); });
+        }
+        const foot = el("div", { class: "vnext" + (after && isMine(after) ? " mine" : "") });
+        if (show && show !== cur) foot.append(el("b", { text: `Starts ${show.time}` }), after ? ` · then ${after.time}: ${after.home} v ${after.away}` : "");
+        else if (after) foot.append(el("b", { text: `Up next ${after.time}` }), ` ${after.home} v ${after.away}`);
+        else if (cur) foot.append("Last game on this court");
+        stack.append(el("div", { class: "vwrap" }, vc, foot));
+        if (myT && !myNext) { const mm = list.find(m => isMine(m) && !hasResult(m)); if (mm) { myNext = { m: mm, hall, n }; myHall = hi; } }
       }
-      hallEls.push(el("section", { class: "hall" }, el("h3", { text: hall }), grid));
-    }
-    const head = el("div", { class: "weekhead" }, el("div", {}, el("div", { class: "eyebrow", text: today ? "Live now" : "Courts" }), el("h2", { text: today ? "On court" : (w.date || w.label) })),
-      el("div", { class: "meta", text: today ? `${w.date || w.label} · updates by itself` : "Where everyone plays" }));
-    const mine = myNext ? el("div", { class: "mybanner" }, el("b", { text: `${state.myTeam}: ${myNext.m.time} · ${myNext.hall} · Court ${myNext.n}` }), el("span", { text: `v ${teamKey(myNext.m.home) === myT ? myNext.m.away : myNext.m.home}` }))
+      slides.push(el("section", { class: "hslide", "aria-label": hall }, el("h3", { class: "htitle" }, hall, el("small", { text: `${hi + 1} of ${hallList.length}` })), stack));
+    });
+    const head = el("p", { class: "chead" }, el("b", { text: today ? "On court now" : "Courts" }), ` · ${w.date || w.label}${today ? " · updates by itself" : ""}`);
+    const mine = myNext ? el("button", { type: "button", class: "mybanner", onclick: () => goHall(myHall, true) }, el("b", { text: `${state.myTeam}: ${myNext.m.time} · ${myNext.hall} · Court ${myNext.n}` }), el("span", { text: `v ${teamKey(myNext.m.home) === myT ? myNext.m.away : myNext.m.home}` }))
       : el("p", { class: "searchnote", text: "Tip: set My team on the Fixtures page and your court is highlighted here." });
-    v.replaceChildren(head, mine, ...hallEls);
+    // swipe between halls; keep the hall you're on when the page refreshes
+    const scroller = el("div", { class: "hscroll" }, slides);
+    const dots = el("div", { class: "hdots" }, hallList.map(([h], i) => el("button", { type: "button", "aria-label": h, onclick: () => goHall(i, true) })));
+    const mark = i => { [...dots.children].forEach((d, k) => d.classList.toggle("on", k === i)); state.courtsHall = i; };
+    function goHall(i, smooth) { if (i < 0) return; scroller.scrollTo({ left: i * scroller.clientWidth, behavior: smooth ? "smooth" : "auto" }); mark(i); }
+    scroller.addEventListener("scroll", () => { if (scroller.clientWidth) mark(Math.round(scroller.scrollLeft / scroller.clientWidth)); }, { passive: true });
+    v.replaceChildren(head, mine, hallList.length > 1 ? dots : el("span"), scroller);
+    const start = state.courtsHall != null ? state.courtsHall : myHall >= 0 ? myHall : 0;
+    requestAnimationFrame(() => goHall(Math.min(start, hallList.length - 1), false));
   }
 
   function findMatch(id) { for (const w of state.weeks) for (const m of w.matches || []) if (m.id === id) return { m, w }; return null; }
