@@ -878,19 +878,42 @@ window.imsBackend = (function () {
     cache.clear(); for (const r of data) cache.set(r.path, r.data);
     notify();
   }
+  async function loadSome(paths) {
+    const { data, error } = await sb.from("docs").select("path,data").in("path", paths);
+    if (error) throw error;
+    for (const p of paths) cache.delete(p);
+    for (const r of data) cache.set(r.path, r.data);
+    notify();
+  }
+  // Realtime pushes each change as it happens. A phone that is scoring a match only listens to that match
+  // (focus); everyone else gets every change, so watchers see all the scores move.
+  let live = false, chan = null, focusPaths = null, focusKey = "";
+  const catchUp = () => (focusPaths ? loadSome(focusPaths) : loadAll()).catch(() => {});
+  function connect() {
+    if (chan) { try { sb.removeChannel(chan); } catch (e) {} }
+    live = false;
+    const opts = { event: "*", schema: "public", table: "docs" };
+    if (focusPaths) opts.filter = `path=in.(${focusPaths.join(",")})`;
+    chan = sb.channel("docs-" + Date.now()).on("postgres_changes", opts, p => {
+      if (p.eventType === "DELETE") { if (p.old && p.old.path) cache.delete(p.old.path); }
+      else if (p.new && p.new.path) cache.set(p.new.path, p.new.data);
+      notify();
+    }).subscribe(status => { live = status === "SUBSCRIBED"; if (live) catchUp(); });
+  }
+  function focus(paths) {
+    const k = paths ? paths.join(",") : "";
+    if (k === focusKey) return;
+    focusKey = k; focusPaths = paths && paths.length ? paths : null;
+    if (loaded) connect();
+  }
   function ready() {
     if (!loaded) {
       loaded = loadAll();
-      let live = false;
-      sb.channel("docs").on("postgres_changes", { event: "*", schema: "public", table: "docs" }, p => {
-        if (p.eventType === "DELETE") { if (p.old && p.old.path) cache.delete(p.old.path); }
-        else if (p.new && p.new.path) cache.set(p.new.path, p.new.data);
-        notify();
-      }).subscribe(status => { live = status === "SUBSCRIBED"; if (live) loadAll().catch(() => {}); });
+      connect();
       // catch anything realtime missed while the phone was asleep
-      document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") loadAll().catch(() => {}); });
-      // changes are pushed while realtime is connected; only fall back to fetching everything when it isn't
-      setInterval(() => { if (!live && document.visibilityState === "visible") loadAll().catch(() => {}); }, 60000);
+      document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") catchUp(); });
+      // only fall back to fetching while realtime isn't connected
+      setInterval(() => { if (!live && document.visibilityState === "visible") catchUp(); }, 60000);
     }
     return loaded;
   }
@@ -957,7 +980,7 @@ window.imsBackend = (function () {
     onChange(fn) { sb.auth.onAuthStateChange(() => setTimeout(fn, 0)); }
   };
 
-  return { configured: true, db: { doc, collection }, auth };
+  return { configured: true, db: { doc, collection }, auth, focus };
 })();
 </script>
 
@@ -991,6 +1014,7 @@ if (typeof document !== "undefined") (function () {
   document.querySelectorAll("nav.tabs button").forEach(b => b.addEventListener("click", () => setView(b.dataset.view)));
   function setView(v) {
     state.view = v;
+    syncFocus();
     document.querySelectorAll("nav.tabs button").forEach(b => b.setAttribute("aria-selected", String(b.dataset.view === v)));
     for (const k of ["scores", "courts", "live", "standings", "setup"]) $("#view-" + k).hidden = k !== v;
     document.body.classList.toggle("in-live", v === "live");
@@ -1772,7 +1796,14 @@ if (typeof document !== "undefined") (function () {
     } catch (e) {}
     renderLive();
   }
+  // a phone scoring a match only needs updates for that match
+  function syncFocus() {
+    const be = window.imsBackend; if (!be || !be.focus) return;
+    const id = state.view === "live" && state.liveId && !state.liveSaved ? state.liveId : null;
+    be.focus(id ? ["live/" + id, "scores/" + id] : null);
+  }
   function renderLive() {
+    syncFocus();
     const v = $("#view-live"); v.replaceChildren();
     const full = !!(state.liveFull && state.liveId && !state.liveSaved);
     v.classList.toggle("full", full);
