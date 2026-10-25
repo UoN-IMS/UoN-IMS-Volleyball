@@ -287,6 +287,7 @@ td.next { font-size: 12px; color: var(--muted); font-weight: 600; }
 .pick { text-align: left; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 14px; display: grid; gap: 2px; cursor: pointer; position: relative; }
 .pick.mine { box-shadow: 0 0 0 3px var(--ball); border-color: transparent; }
 .pick .pill { position: absolute; right: 12px; top: 12px; }
+.pick .pill:not(.ok):not(.wait) { background: var(--bg); color: var(--muted); border: 1px solid var(--line); }
 .pwhen { font-size: 12px; color: var(--muted); text-transform: uppercase; font-weight: 600; letter-spacing: .04em; }
 .pteams { font-weight: 700; font-size: 16px; padding-right: 90px; }
 
@@ -1377,6 +1378,25 @@ if (typeof document !== "undefined") (function () {
   function saveLive(id, L) { state.liveCache = { id, L }; try { localStorage.setItem(liveKey(id), JSON.stringify(L)); } catch (e) {} }
   function getLive(id) { return state.liveCache && state.liveCache.id === id ? state.liveCache.L : (state.liveCache = { id, L: loadLive(id) }).L; }
   function clearLive(id) { try { localStorage.removeItem(liveKey(id)); } catch (e) {} state.liveCache = null; }
+  // Live scoring is open from 15 min before kick-off to 15 min after the slot ends, UK time (the organiser is exempt)
+  const WINDOW_PAD = 15, SLOT_MIN = 50;
+  function ukNow() {
+    const p = {}; for (const x of new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", year: "numeric", month: "numeric", day: "numeric", hour: "numeric", minute: "numeric", hourCycle: "h23" }).formatToParts(new Date())) p[x.type] = Number(x.value);
+    return Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute);
+  }
+  function scoreWindow(m, w) {
+    const d = weekDate(w), t = String(m.time || "").match(/(\d{1,2})[:.](\d{2})/);
+    if (!d || !t) return null;
+    const ko = Date.UTC(d.getFullYear(), d.getMonth(), d.getDate(), Number(t[1]), Number(t[2]));
+    return { from: ko - WINDOW_PAD * 60000, to: ko + (Number(m.duration || w.duration) || SLOT_MIN) * 60000 + WINDOW_PAD * 60000 };
+  }
+  const hhmm = ms => new Date(ms).toISOString().slice(11, 16);
+  function windowState(m, w) {
+    if (state.canAdmin) return "open";
+    const win = scoreWindow(m, w); if (!win) return "open";
+    const now = ukNow();
+    return now < win.from ? "early" : now > win.to ? "late" : "open";
+  }
   function findMatch(id) { for (const w of state.weeks) for (const m of w.matches || []) if (m.id === id) return { m, w }; return null; }
   const setsWon = (L, side) => L.done.filter(([a, b]) => (side === 0 ? a > b : b > a)).length;
   const matchOver = L => setsWon(L, 0) === 2 || setsWon(L, 1) === 2;
@@ -1460,12 +1480,27 @@ if (typeof document !== "undefined") (function () {
         box.append(el("button", { class: "pick" + (mine(m) ? " mine" : ""), onclick: () => { state.liveId = m.id; renderLive(); window.scrollTo(0, 0); } },
           el("span", { class: "pwhen", text: [m.time, m.court].filter(Boolean).join(" · ") }),
           el("span", { class: "pteams", text: `${m.home} v ${m.away}` }),
-          hasResult(m) ? el("span", { class: "pill ok", text: "Result in" }) : elsewhere ? el("span", { class: "pill wait", text: "Being scored" }) : started ? el("span", { class: "pill wait", text: "In progress" }) : null));
+          hasResult(m) ? el("span", { class: "pill ok", text: "Result in" }) : elsewhere ? el("span", { class: "pill wait", text: "Being scored" }) : started ? el("span", { class: "pill wait", text: "In progress" }) : windowState(m, w) === "early" ? el("span", { class: "pill", text: "Opens " + hhmm(scoreWindow(m, w).from) }) : windowState(m, w) === "late" ? el("span", { class: "pill", text: "Closed" }) : null));
       }
       v.append(el("h3", { class: "divlabel", text: `${w.label}${w.date ? " · " + w.date : ""}` }), box);
       return;
     }
     const { m } = found;
+    state.winWait = false;
+    {
+      const L0 = loadLive(m.id), live0 = liveOf(m);
+      const begun = L0.done.length || L0.cur[0] || L0.cur[1] || (live0 && ((live0.done || []).length || (live0.cur || []).some(Boolean)));
+      const ws = windowState(m, found.w);
+      if (ws !== "open" && !begun && !scoreOf(m)) {
+        const win = scoreWindow(m, found.w);
+        state.winWait = ws === "early";
+        v.append(el("div", { class: "liveover remote" },
+          el("b", { text: `${m.home} v ${m.away}` }),
+          el("span", { text: ws === "early" ? `Scoring for this game opens at ${hhmm(win.from)} on ${found.w.date || "match day"}, 15 minutes before kick-off.` : `Scoring for this game closed at ${hhmm(win.to)}. If you still need to send a result, contact the organiser.` }),
+          el("div", { class: "actions" }, el("button", { class: "btn ghost", text: "‹ Matches", onclick: () => { state.liveId = null; renderLive(); } }))));
+        return;
+      }
+    }
     if (state.liveSaved === m.id) {
       v.append(el("div", { class: "liveover" }, el("b", { text: `${m.home} v ${m.away}: result sent` }),
         el("p", { class: "msg ok", text: "It's on the Fixtures page and counts in the standings now. The organiser will check it." }),
@@ -1848,6 +1883,8 @@ if (typeof document !== "undefined") (function () {
   drop.addEventListener("dragleave", () => drop.classList.remove("over"));
   drop.addEventListener("drop", e => { e.preventDefault(); drop.classList.remove("over"); const f = e.dataTransfer.files[0]; if (f) readFile(f); });
 
+  // the scoring window opens and closes on its own
+  setInterval(() => { if (state.view === "live" && document.visibilityState === "visible" && (state.winWait || !state.liveId)) renderLive(); }, 30000);
   boot();
 })();
 </script>
