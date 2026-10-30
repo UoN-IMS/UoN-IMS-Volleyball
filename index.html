@@ -831,7 +831,8 @@ function divOrder(d) {
 function projectNext(stage, groups) {
   const out = new Map();
   if (stage === "group") {
-    groups.forEach(([g, teams]) => teams.forEach((t, i) => out.set(t.name, DIVISIONS[i] || "")));
+    // Premier A and B are the same level: the top two of each group are drawn at random between them
+    groups.forEach(([g, teams]) => teams.forEach((t, i) => out.set(t.name, i < 2 ? "Premier" : DIVISIONS[i] || "")));
   } else if (stage === "r1") {
     for (const [d, teams] of groups) {
       const di = DIVISIONS.indexOf(d);
@@ -2040,7 +2041,7 @@ if (typeof document !== "undefined") (function () {
       el("span", { class: "chip" }, el("b", { text: "0" }), " lose 0–2"),
       el("span", { class: "chip quiet", text: `${all.filter(counts).length} of ${all.length} played${pend ? ` · ${pend} to check` : ""}${disp ? ` · ${disp} challenged (not counted)` : ""}` })));
     const proj = projectNext(st.id, groups);
-    const nextHead = { group: { label: "Heading to", title: "Where this position goes after the group stage: 1st Premier A, 2nd Premier B, 3rd Division 3 … 6th Division 6" },
+    const nextHead = { group: { label: "Heading to", title: "Where this position goes after the group stage: 1st and 2nd are drawn at random into Premier A or Premier B (same level), 3rd Division 3 … 6th Division 6" },
       r1: { label: "Next", title: "Top 2 move up a division, bottom 2 move down" },
       r2: { label: "Knockout", title: "Top 8 overall: all of Premier A plus the top 2 of Premier B" } }[st.id];
     // phones: "Premier A" -> "Prem A", "Division 3" -> "Div 3" so the table fits
@@ -2071,6 +2072,7 @@ if (typeof document !== "undefined") (function () {
       v.append(el("div", { class: "tablewrap" }, el("table", {}, el("thead", {}, head), tb)));
     }
     v.append(el("p", { class: "legend", text: "Ranked by points per match, then points, set difference and rally-point difference. Results sent from Live score count straight away, before the organiser checks them. “Heading to” and “Next” are projections from the table as it stands." }));
+    if (st.id === "group") v.append(el("p", { class: "legend", text: "Premier A and Premier B are the same level. The top two teams in each group are drawn at random into Premier A or Premier B." }));
   }
 
   function renderBracket(v, weeks) {
