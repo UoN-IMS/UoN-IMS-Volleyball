@@ -2137,7 +2137,7 @@ if (typeof document !== "undefined") (function () {
       const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "Sheet1");
       const w = state.spawtzWeek === "all" ? "all-weeks" : slug((state.weeks.find(x => x.id === state.spawtzWeek) || {}).label || "week");
       XLSX.writeFile(wb, `spawtz-results-${w}.xls`, { bookType: "biff8" });
-      msg.className = "msg ok"; msg.textContent = "Downloaded. Upload it in Spawtz as a fixture file.";
+      msg.className = "msg ok"; msg.textContent = "Downloaded. Spawtz can't add scores to games it already has by upload, so use this as your list when typing scores in.";
     } });
     const msg = el("span", { class: "msg" });
     box.append(el("div", { class: "row" }, sel), 
