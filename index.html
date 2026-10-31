@@ -501,7 +501,7 @@ html.live-full header.top, html.live-full nav.tabs, html.live-full .foot, html.l
     </section>
     <section>
       <h3>Sharing with captains</h3>
-      <p>Just send the site link. Anyone with it can see fixtures and standings and score a match with Live score, then send the result in. Results they send count straight away and show as “To check” until you confirm them. Only you, signed in, can type or change scores, confirm or remove them, and change fixtures. Once a result is sent it's final: only you can change it.</p>
+      <p>Just send the site link. Anyone with it can see fixtures and standings and score a match with Live score, then send the result in. Results they send count straight away. If someone tells you a score is wrong, edit it yourself. Only you, signed in, can type, change or remove scores and change fixtures. Once a result is sent it's final: only you can change it.</p>
     </section>
   </div>
   <p class="foot">All games at David Ross Sports Village · check Courts for your hall</p>
@@ -1258,10 +1258,9 @@ if (typeof document !== "undefined") (function () {
     const st = stageOf(w);
     list = list.filter(m => !m.free);
     const done = list.filter(hasResult).length;
-    const conf = list.filter(m => (scoreOf(m) || {}).status === "confirmed").length;
     return el("div", { class: "weekhead" + (compact ? " compact" : "") },
       el("div", {}, st ? el("div", { class: "eyebrow", text: st.label }) : null, el("h2", { text: w.label })),
-      el("div", { class: "meta" }, w.date && w.date !== w.label ? el("span", { text: w.date }) : null, w.date && w.date !== w.label ? el("br") : null, el("span", { text: `${done} of ${list.length} scores in · ${conf} confirmed` })));
+      el("div", { class: "meta" }, w.date && w.date !== w.label ? el("span", { text: w.date }) : null, w.date && w.date !== w.label ? el("br") : null, el("span", { text: `${done} of ${list.length} scores in` })));
   }
   const clock = t => { const x = String(t || "").match(/(\d{1,2})[:.](\d{2})/); return x ? Number(x[1]) * 60 + Number(x[2]) : 9999; };
   const courtNo = c => { const x = String(c || "").match(/(\d+)\s*$/); return x ? Number(x[1]) : 99; };
@@ -1487,8 +1486,7 @@ if (typeof document !== "undefined") (function () {
   }
 
   function statusPill(status) {
-    if (status === "confirmed") return el("span", { class: "pill ok", text: "Confirmed" });
-    if (status === "pending") return el("span", { class: "pill wait", text: "To check" });
+    // results count as soon as they're sent; the organiser just edits any that are wrong
     if (status === "disputed") return el("span", { class: "pill bad", text: "Challenged" });
     return el("span");
   }
@@ -1516,7 +1514,7 @@ if (typeof document !== "undefined") (function () {
       const pick = el("div", { class: "sidepick" }, el("span", { text: "You're entering this for:" }),
         el("button", { class: "btn", text: m.home, onclick: () => save(m, "A") }),
         el("button", { class: "btn", text: m.away, onclick: () => save(m, "B") }),
-        state.canAdmin ? el("button", { class: "btn ghost", text: "Organiser (no confirmation needed)", onclick: () => save(m, "org") }) : null);
+        state.canAdmin ? el("button", { class: "btn ghost", text: "Organiser", onclick: () => save(m, "org") }) : null);
       wrap.append(pick); return wrap;
     }
     if (dirty) {
@@ -1534,7 +1532,6 @@ if (typeof document !== "undefined") (function () {
     const other = otherSide(saved.side);
     const iSubmitted = state.myId && saved.by === state.myId;
     const ms = mySide(m);
-    const mayRespond = can && state.canAdmin;
 
     if (mode === "challenge") {
       const ta = el("input", { type: "text", class: "note-in", id: "note-" + m.id, placeholder: "What's wrong? e.g. set 2 was 23–25", maxlength: "200" });
@@ -1552,12 +1549,9 @@ if (typeof document !== "undefined") (function () {
 
     const line = el("div", { class: "who" });
     const act = el("div", { class: "actions" });
-    if (st === "pending") {
-      line.textContent = `Sent by ${by}${saved.at ? " · " + fmtTime(saved.at) : ""}. Counts now, the organiser will check it.`;
-      if (mayRespond) act.append(el("button", { class: "btn primary", text: "Confirm", onclick: () => respond(m, "confirmed") }));
-    } else if (st === "confirmed") {
-      const cb = saved.forfeit ? `${sideName(m, saved.forfeit) || "A team"} forfeited, awarded 2–0 by the organiser` : saved.side === "org" ? "Entered by the organiser" : `Sent by ${by}, confirmed by ${saved.confirmedSide === "org" ? "the organiser" : sideName(m, saved.confirmedSide) || "the other captain"}`;
-      line.textContent = cb + (saved.confirmedAt ? " · " + fmtTime(saved.confirmedAt) : "");
+    if (st === "pending" || st === "confirmed") {
+      const cb = saved.forfeit ? `${sideName(m, saved.forfeit) || "A team"} forfeited, awarded 2–0 by the organiser` : saved.side === "org" ? "Entered by the organiser" : `Sent by ${by}`;
+      line.textContent = cb + (saved.at ? " · " + fmtTime(saved.at) : "");
     } else if (st === "disputed") {
       line.append(el("span", { text: `${sideName(m, saved.challengedSide) || "The other captain"} challenged this score` }), saved.note ? el("q", { text: saved.note }) : null, el("span", { text: ". Fix the numbers and resubmit, or the organiser can settle it." }));
       if (state.canAdmin) act.append(el("button", { class: "btn", text: "Accept as entered", onclick: () => respond(m, "confirmed") }));
@@ -1891,7 +1885,7 @@ if (typeof document !== "undefined") (function () {
     }
     if (state.liveSaved === m.id) {
       v.append(el("div", { class: "liveover" }, el("b", { text: `${m.home} v ${m.away}: result sent` }),
-        el("p", { class: "msg ok", text: "It's on the Fixtures page and counts in the standings now. The organiser will check it." }),
+        el("p", { class: "msg ok", text: "It's on the Fixtures page and counts in the standings now." }),
         el("button", { class: "btn primary big", text: "Back to fixtures", onclick: () => { state.liveSaved = null; state.liveId = null; setView("scores"); } })));
       if (state.liveFull) { state.liveFull = false; try { if (document.fullscreenElement) document.exitFullscreen().catch(() => {}); } catch (e) {} }
       return;
@@ -2033,14 +2027,13 @@ if (typeof document !== "undefined") (function () {
 
     const groups = computeStandings(weeks, state.scores);
     const all = weeks.flatMap(w => w.matches || []);
-    const pend = all.filter(m => counts(m) && (scoreOf(m).status || "pending") === "pending").length;
     const disp = all.filter(m => hasResult(m) && scoreOf(m).status === "disputed").length;
     v.append(el("div", { class: "chips" },
       el("span", { class: "chip" }, el("b", { text: "3" }), " win 2–0"),
       el("span", { class: "chip" }, el("b", { text: "2" }), " win 2–1"),
       el("span", { class: "chip" }, el("b", { text: "1" }), " lose 1–2"),
       el("span", { class: "chip" }, el("b", { text: "0" }), " lose 0–2"),
-      el("span", { class: "chip quiet", text: `${all.filter(counts).length} of ${all.length} played${pend ? ` · ${pend} to check` : ""}${disp ? ` · ${disp} challenged (not counted)` : ""}` })));
+      el("span", { class: "chip quiet", text: `${all.filter(counts).length} of ${all.length} played${disp ? ` · ${disp} challenged (not counted)` : ""}` })));
     const proj = projectNext(st.id, groups);
     const nextHead = { group: { label: "Heading to", title: "Where this position goes after the group stage: 1st and 2nd are drawn at random into Premier A or Premier B (same level), 3rd Division 3 … 6th Division 6" },
       r1: { label: "Next", title: "Top 2 move up a division, bottom 2 move down" },
@@ -2072,7 +2065,7 @@ if (typeof document !== "undefined") (function () {
       });
       v.append(el("div", { class: "tablewrap" }, el("table", {}, el("thead", {}, head), tb)));
     }
-    v.append(el("p", { class: "legend", text: "Ranked by points per match, then points, set difference and rally-point difference. Results sent from Live score count straight away, before the organiser checks them. “Heading to” and “Next” are projections from the table as it stands." }));
+    v.append(el("p", { class: "legend", text: "Ranked by points per match, then points, set difference and rally-point difference. Results sent from Live score count straight away. “Heading to” and “Next” are projections from the table as it stands." }));
     if (st.id === "group") v.append(el("p", { class: "legend", text: "Premier A and Premier B are the same level. The top two teams in each group are drawn at random into Premier A or Premier B." }));
   }
 
@@ -2088,7 +2081,7 @@ if (typeof document !== "undefined") (function () {
             el("span", { class: "bsets", text: ok ? (side === "A" ? r.setsA : r.setsB) : "" }));
         };
         grid.append(el("div", { class: "bmatch" }, el("div", { class: "bhead", text: [m.division, m.time, m.court].filter(Boolean).join(" · ") || "Match" }), row("A"), row("B"),
-          s && s.status !== "confirmed" && r && r.complete ? el("div", { class: "bnote", text: s.status === "disputed" ? "Challenged" : "To check" }) : null));
+          s && s.status === "disputed" && r && r.complete ? el("div", { class: "bnote", text: "Challenged" }) : null));
       }
       v.append(grid);
     }
@@ -2105,8 +2098,8 @@ if (typeof document !== "undefined") (function () {
   const spawtzDuration = (m, cfg) => Number(cfg.duration) || (/^(15:30|16:30|17:30)$/.test(m.time || "") ? 60 : 50);
   const SPAWTZ_HEAD = ["League", "Division", "Season", "Date", "Time", "Home Team", "Away Team", "Venue", "Playing Area", "Duration", "Home Team Score", "Away Team Score", "Cross League", "Nonstanding", "Hidden"];
   function spawtzSettings() { return { ...SPAWTZ, ...((state.league && state.league.spawtz) || {}) }; }
-  function spawtzRows(weekIds, withUnchecked) {
-    const cfg = spawtzSettings(); const rows = []; const skipped = { none: 0, unchecked: 0, nodate: 0, defaults: 0 };
+  function spawtzRows(weekIds) {
+    const cfg = spawtzSettings(); const rows = []; const skipped = { none: 0, nodate: 0, defaults: 0 };
     for (const w of state.weeks) {
       if (!weekIds.has(w.id)) continue;
       for (const m of w.matches || []) {
@@ -2114,7 +2107,6 @@ if (typeof document !== "undefined") (function () {
         // default wins against teams that joined late were never fixtures in Spawtz
         if (/joined|forfeit|default win/i.test(m.note || "") || uncounted(m)) { skipped.defaults++; continue; }
         if (!sc || !r.complete || sc.status === "disputed") { skipped.none++; continue; }
-        if (sc.status !== "confirmed" && !withUnchecked) { skipped.unchecked++; continue; }
         const d = (m.date && weekDate({ date: m.date })) || weekDate(w);
         if (!d) { skipped.nodate++; continue; }
         const serial = (Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) - Date.UTC(1899, 11, 30)) / 86400000;
@@ -2132,12 +2124,9 @@ if (typeof document !== "undefined") (function () {
       el("option", { value: "all", text: "All weeks with results", selected: state.spawtzWeek === "all" }),
       played.map(w => el("option", { value: w.id, text: `${w.label}${w.date ? " · " + w.date : ""}`, selected: w.id === state.spawtzWeek })));
     sel.addEventListener("change", () => { state.spawtzWeek = sel.value; renderSpawtz(); });
-    const chk = el("input", { type: "checkbox", id: "spawtzAll", checked: !!state.spawtzUnchecked });
-    chk.addEventListener("change", () => { state.spawtzUnchecked = chk.checked; renderSpawtz(); });
     const ids = new Set(state.spawtzWeek === "all" ? played.map(w => w.id) : [state.spawtzWeek]);
-    const { rows, skipped } = spawtzRows(ids, !!state.spawtzUnchecked);
+    const { rows, skipped } = spawtzRows(ids);
     const notes = [];
-    if (skipped.unchecked) notes.push(`${skipped.unchecked} still “To check”, left out`);
     if (skipped.none) notes.push(`${skipped.none} with no result yet`);
     if (skipped.defaults) notes.push(`${skipped.defaults} default win${skipped.defaults === 1 ? "" : "s"} for late joiners left out (not fixtures in Spawtz)`);
     if (skipped.nodate) notes.push(`${skipped.nodate} without a date, left out`);
@@ -2151,7 +2140,7 @@ if (typeof document !== "undefined") (function () {
       msg.className = "msg ok"; msg.textContent = "Downloaded. Upload it in Spawtz as a fixture file.";
     } });
     const msg = el("span", { class: "msg" });
-    box.append(el("div", { class: "row" }, sel), el("div", { class: "row" }, el("label", { for: "spawtzAll" }, chk, " Include results still “To check”")),
+    box.append(el("div", { class: "row" }, sel), 
       el("div", { class: "row" }, btn, msg), notes.length ? el("p", { class: "msg", text: notes.join(" · ") + "." }) : null,
       el("p", { class: "msg", text: `League “${spawtzSettings().league}”, season “${spawtzSettings().season}”. Team, division and court names are written exactly as on this site.` }));
   }
