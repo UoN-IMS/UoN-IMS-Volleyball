@@ -1709,8 +1709,8 @@ if (typeof document !== "undefined") (function () {
     let myNext = null, myHall = -1;
     const slides = [];
     // as laid out on the day: the hall with courts 4-6 first (4, 5, 6), then courts 3, 2, 1, entrance at the bottom
-    const hallMax = h => Math.max(...h[1].keys());
-    const hallList = [...halls.entries()].sort((a, b) => hallMax(b) - hallMax(a) || a[0].localeCompare(b[0]));
+    // halls in alphabetical order: Hall A, Hall B, Hall C, Hall D
+    const hallList = [...halls.entries()].sort((a, b) => a[0].localeCompare(b[0], undefined, { numeric: true }));
     hallList.forEach(([hall, courts], hi) => {
       const stack = el("div", { class: "hstack" });
       for (const [n, games] of [...courts.entries()].sort((a, b) => b[0] - a[0])) {
