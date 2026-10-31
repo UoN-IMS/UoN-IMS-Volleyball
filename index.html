@@ -2100,7 +2100,9 @@ if (typeof document !== "undefined") (function () {
       STAGES.map(st => el("option", { value: st.id, text: "Stage: " + st.label, selected: st.id === value })));
     s.addEventListener("change", () => onchange(s.value)); return s;
   }
-  const SPAWTZ = { league: "Volleyball Sunday League (6-a-side, Mixed) DRSV", season: "IMS Academic year 26/27 - Phase 1", venue: "David Sports Village Volleyball", duration: 60 };
+  const SPAWTZ = { league: "Volleyball Sunday League (6-a-side, Mixed) DRSV", season: "IMS Academic year 26/27 - Phase 1", venue: "David Sports Village Volleyball" };
+  // the old 60-minute slots (weeks 1-2) vs the 50-minute slots used from 25 Oct
+  const spawtzDuration = (m, cfg) => Number(cfg.duration) || (/^(15:30|16:30|17:30)$/.test(m.time || "") ? 60 : 50);
   const SPAWTZ_HEAD = ["League", "Division", "Season", "Date", "Time", "Home Team", "Away Team", "Venue", "Playing Area", "Duration", "Home Team Score", "Away Team Score", "Cross League", "Nonstanding", "Hidden"];
   function spawtzSettings() { return { ...SPAWTZ, ...((state.league && state.league.spawtz) || {}) }; }
   function spawtzRows(weekIds, withUnchecked) {
@@ -2116,7 +2118,7 @@ if (typeof document !== "undefined") (function () {
         const d = (m.date && weekDate({ date: m.date })) || weekDate(w);
         if (!d) { skipped.nodate++; continue; }
         const serial = (Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) - Date.UTC(1899, 11, 30)) / 86400000;
-        rows.push([cfg.league, m.division || "", cfg.season, { t: "n", v: serial, z: "dd/mm/yyyy" }, m.time || "", m.home, m.away, cfg.venue, spawtzArea(m.court), Number(cfg.duration) || 60, r.setsA, r.setsB, "", "", ""]);
+        rows.push([cfg.league, m.division || "", cfg.season, { t: "n", v: serial, z: "dd/mm/yyyy" }, m.time || "", m.home, m.away, cfg.venue, spawtzArea(m.court), spawtzDuration(m, cfg), r.setsA, r.setsB, "", "", ""]);
       }
     }
     return { rows, skipped };
