@@ -202,6 +202,8 @@ main { padding-block: 20px 60px; }
 .match.line.free .vs { font-weight: 400; color: var(--muted); }
 .match.missing { border: 2px solid var(--bad); background: color-mix(in srgb, var(--bad) 7%, var(--surface)); }
 .divlabel.missing { color: var(--bad); }
+.missbanner { display: flex; justify-content: space-between; align-items: center; gap: 10px; width: 100%; margin: 0 0 10px; padding: 10px 14px; border: 2px solid var(--bad); border-radius: var(--radius); background: color-mix(in srgb, var(--bad) 7%, var(--surface)); color: var(--bad); font: inherit; font-size: 14px; cursor: pointer; text-align: left; }
+.missbanner span { font-weight: 700; white-space: nowrap; }
 .fnote { color: var(--muted); }
 .askbox { display: grid; gap: 8px; margin: 0 12px 0 82px; padding: 10px 12px; border-radius: 8px; background: var(--bg); font-size: 14px; }
 .askbox.req { border: 1px solid var(--warn); margin-bottom: 10px; }
@@ -1264,6 +1266,13 @@ if (typeof document !== "undefined") (function () {
       const w = state.weeks.find(x => x.id === state.week) || state.weeks[0];
       const all = w.matches || [];
       frag.append(weekHead(w, all, false));
+      // organiser: earlier weeks' games still without a score, one tap away
+      if (state.canAdmin) for (const ow of state.weeks) {
+        if (ow.id === w.id) continue;
+        const miss = (ow.matches || []).filter(missingScore).length;
+        if (miss) frag.append(el("button", { type: "button", class: "missbanner", onclick: () => { state.week = ow.id; renderScores(); window.scrollTo(0, 0); } },
+          el("b", { text: `${ow.label}: ${miss} game${miss === 1 ? "" : "s"} with no score` }), el("span", { text: "Show ›" })));
+      }
       const games = all.filter(isGame), done = games.filter(hasResult).length;
       frag.append(el("div", { class: "progress" }, el("span", { style: `width:${games.length ? (100 * done / games.length) : 0}%` })));
       // in kick-off order, one heading per time slot; for the organiser, played games with no score go first, then your own match
