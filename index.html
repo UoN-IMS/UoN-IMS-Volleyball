@@ -775,6 +775,8 @@ const DIVISIONS = ["Premier A", "Premier B", "Division 3", "Division 4", "Divisi
 /* A stored score either has set-by-set numbers (sets) or only the set count (result: [home, away]), e.g. imported from Spawtz. */
 function scoreResult(sc) {
   if (!sc) return evalScore(null);
+  // both teams forfeited: a 0-2 loss and no league points for each
+  if (sc.forfeit === "both") return { complete: true, error: "", warnings: [], setsA: 0, setsB: 0, winner: null, ptsA: 0, ptsB: 0, setWinners: [], doubleForfeit: true };
   if (Array.isArray(sc.result) && !(sc.sets && sc.sets.some(Boolean))) {
     const [a, b] = sc.result.map(Number);
     const ok = [a, b].every(Number.isInteger) && Math.max(a, b) === 2 && Math.min(a, b) <= 1;
@@ -805,7 +807,7 @@ function computeStandings(weeks, scores) {
     const sc = scores[m.id]; if (!sc || sc.status === "disputed") continue;
     const r = scoreResult(sc); if (!r.complete) continue;
     for (const [x, y, me] of [[a, b, "A"], [b, a, "B"]]) {
-      const mySets = me === "A" ? r.setsA : r.setsB, opp = me === "A" ? r.setsB : r.setsA;
+      const mySets = me === "A" ? r.setsA : r.setsB, opp = r.doubleForfeit ? 2 : me === "A" ? r.setsB : r.setsA;
       x.P++; x.SW += mySets; x.SL += opp; x.Pts += me === "A" ? r.ptsA : r.ptsB;
       x.form.push(r.winner === me ? "W" : "L");
       if (r.winner === me) { x.W++; opp === 0 ? x.w20++ : x.w21++; } else { x.L++; mySets === 0 ? x.l20++ : x.l21++; }
@@ -1297,7 +1299,8 @@ if (typeof document !== "undefined") (function () {
         isAdmin ? el("span", { class: "chev", text: "Edit" }) : el("span")));
     }
     const tags = () => [m.friendly || uncounted(m) ? el("span", { class: "tag2", text: "Friendly" }) : null,
-      saved && saved.forfeit ? el("span", { class: "tag2", text: "Forfeit" }) : null,
+      saved && saved.forfeit ? el("span", { class: "tag2", text: saved.forfeit === "both" ? "Double forfeit" : "Forfeit" }) : null,
+      saved && !saved.forfeit && scoreResult(saved).setsOnly && state.canAdmin ? el("span", { class: "tag2", text: "Sets only" }) : null,
       req && !saved ? el("span", { class: "tag2 warn", text: "Forfeit requested" }) : null];
     const fullBoard = dirty || state.errors[m.id] || state.open[m.id] === "type" || (saved && state.open[m.id]);
     if (!fullBoard) {
@@ -1321,8 +1324,9 @@ if (typeof document !== "undefined") (function () {
           const acts = el("div", { class: "actions" });
           acts.append(el("button", { class: "btn primary", text: "Score this game", onclick: () => { state.liveId = m.id; setView("live"); window.scrollTo(0, 0); } }));
           if (isAdmin) acts.append(el("button", { class: "btn", text: "Type score", onclick: () => { state.open[m.id] = "type"; rerenderCard(m); } }),
-            el("button", { class: "btn", text: "Edit", onclick: () => startEdit(findMatch(m.id).w, m) }),
-            el("button", { class: "btn", text: "Forfeit", onclick: () => { state.ask[m.id] = "forfeit"; rerenderCard(m); } }));
+            el("button", { class: "btn", text: "Sets only", onclick: () => { state.ask[m.id] = "sets"; rerenderCard(m); } }),
+            el("button", { class: "btn", text: "Forfeit", onclick: () => { state.ask[m.id] = "forfeit"; rerenderCard(m); } }),
+            el("button", { class: "btn", text: "Edit", onclick: () => startEdit(findMatch(m.id).w, m) }));
           else if (!req && !saved && !uncounted(m)) acts.append(el("button", { class: "btn ghost", text: "Request forfeit", onclick: () => { state.ask[m.id] = "request"; rerenderCard(m); } }));
           card.append(acts);
         }
@@ -1368,7 +1372,8 @@ if (typeof document !== "undefined") (function () {
       }
     });
     card.append(board);
-    card.append(footer(m, r, dirty, saved, can));
+    if (state.ask[m.id] && isAdmin && !dirty) card.append(askBox(m, state.ask[m.id], isAdmin));
+    else card.append(footer(m, r, dirty, saved, can));
     return card;
   }
 
@@ -1379,10 +1384,19 @@ if (typeof document !== "undefined") (function () {
     const close = () => { delete state.ask[m.id]; rerenderCard(m); };
     const msg = el("span", { class: "msg" });
     if (ask === "forfeit") {
-      box.append(el("b", { text: "Which team forfeits? The other team gets a 2–0 win." }),
+      box.append(el("b", { text: "Which team forfeits? The other team gets a 2–0 win. If both forfeit, both get a 0–2 loss and no points." }),
         el("div", { class: "actions wrap" },
           el("button", { class: "btn danger", text: m.home, onclick: () => forfeit(m, "A", msg) }),
           el("button", { class: "btn danger", text: m.away, onclick: () => forfeit(m, "B", msg) }),
+          el("button", { class: "btn danger", text: "Both teams", onclick: () => forfeit(m, "both", msg) }),
+          el("button", { class: "btn ghost", text: "Cancel", onclick: close })), msg);
+      return box;
+    }
+    if (ask === "sets") {
+      // the organiser records only who won the sets: league points count, rally points don't
+      const pick = (a, b) => el("button", { class: "btn", text: `${a > b ? m.home : m.away} won ${Math.max(a, b)}–${Math.min(a, b)}`, onclick: () => saveSetsOnly(m, a, b, msg) });
+      box.append(el("b", { text: "Sets only: who won, and by how many sets? League points count as usual; no rally points are added." }),
+        el("div", { class: "actions wrap" }, pick(2, 0), pick(2, 1), pick(1, 2), pick(0, 2),
           el("button", { class: "btn ghost", text: "Cancel", onclick: close })), msg);
       return box;
     }
@@ -1411,10 +1425,19 @@ if (typeof document !== "undefined") (function () {
     } else box.append(el("span", { class: "msg", text: "Waiting for the organiser." }));
     return box;
   }
+  async function saveSetsOnly(m, a, b, msg) {
+    msg.className = "msg"; msg.textContent = "Saving…";
+    try {
+      const now = new Date().toISOString();
+      await state.db.doc("scores/" + m.id).set({ sets: null, result: [a, b], side: "org", home: m.home, away: m.away, by: state.myId || null, status: "confirmed", at: now, confirmedSide: "org", confirmedBy: state.myId || null, confirmedAt: now });
+      if (state.requests[m.id]) await state.db.doc("requests/" + m.id).delete().catch(() => {});
+      delete state.ask[m.id]; delete state.open[m.id]; delete state.drafts[m.id];
+    } catch (e) { msg.className = "msg err"; msg.textContent = "Couldn't save it. Try again."; }
+  }
   async function forfeit(m, side, msg) {
     msg.className = "msg"; msg.textContent = "Saving…";
     try {
-      await state.db.doc("scores/" + m.id).set({ sets: forfeitSets(side), side: "org", forfeit: side, home: m.home, away: m.away, status: "confirmed", at: new Date().toISOString(), confirmedSide: "org", confirmedAt: new Date().toISOString() });
+      await state.db.doc("scores/" + m.id).set({ sets: side === "both" ? null : forfeitSets(side), side: "org", forfeit: side, home: m.home, away: m.away, status: "confirmed", at: new Date().toISOString(), confirmedSide: "org", confirmedAt: new Date().toISOString() });
       if (state.requests[m.id]) await state.db.doc("requests/" + m.id).delete().catch(() => {});
       delete state.ask[m.id];
     } catch (e) { msg.className = "msg err"; msg.textContent = "Couldn't save it. Try again."; }
@@ -1550,13 +1573,15 @@ if (typeof document !== "undefined") (function () {
     const line = el("div", { class: "who" });
     const act = el("div", { class: "actions" });
     if (st === "pending" || st === "confirmed") {
-      const cb = saved.forfeit ? `${sideName(m, saved.forfeit) || "A team"} forfeited, awarded 2–0 by the organiser` : saved.side === "org" ? "Entered by the organiser" : `Sent by ${by}`;
+      const cb = saved.forfeit === "both" ? "Both teams forfeited: a 0–2 loss and no points each" : saved.forfeit ? `${sideName(m, saved.forfeit) || "A team"} forfeited, awarded 2–0 by the organiser` : r.setsOnly ? "Sets only, entered by the organiser: league points count, no rally points" : saved.side === "org" ? "Entered by the organiser" : `Sent by ${by}`;
       line.textContent = cb + (saved.at ? " · " + fmtTime(saved.at) : "");
     } else if (st === "disputed") {
       line.append(el("span", { text: `${sideName(m, saved.challengedSide) || "The other captain"} challenged this score` }), saved.note ? el("q", { text: saved.note }) : null, el("span", { text: ". Fix the numbers and resubmit, or the organiser can settle it." }));
       if (state.canAdmin) act.append(el("button", { class: "btn", text: "Accept as entered", onclick: () => respond(m, "confirmed") }));
     }
     if (can && state.canAdmin) act.prepend(el("button", { class: "btn ghost danger", text: "Remove", onclick: () => { state.mode[m.id] = "clear"; rerenderCard(m); } }),
+      el("button", { class: "btn ghost", text: "Sets only", onclick: () => { state.ask[m.id] = "sets"; rerenderCard(m); } }),
+      el("button", { class: "btn ghost", text: "Forfeit", onclick: () => { state.ask[m.id] = "forfeit"; rerenderCard(m); } }),
       el("button", { class: "btn ghost", text: "Edit", onclick: () => startEdit(findMatch(m.id).w, m) }));
     wrap.append(el("div", { class: "statusrow" }, line, act));
     return wrap;
@@ -2099,7 +2124,7 @@ if (typeof document !== "undefined") (function () {
   const SPAWTZ_HEAD = ["League", "Division", "Season", "Date", "Time", "Home Team", "Away Team", "Venue", "Playing Area", "Duration", "Home Team Score", "Away Team Score", "Cross League", "Nonstanding", "Hidden"];
   function spawtzSettings() { return { ...SPAWTZ, ...((state.league && state.league.spawtz) || {}) }; }
   function spawtzRows(weekIds) {
-    const cfg = spawtzSettings(); const rows = []; const skipped = { none: 0, nodate: 0, defaults: 0 };
+    const cfg = spawtzSettings(); const rows = []; const skipped = { none: 0, nodate: 0, defaults: 0, double: 0 };
     for (const w of state.weeks) {
       if (!weekIds.has(w.id)) continue;
       for (const m of w.matches || []) {
@@ -2110,6 +2135,7 @@ if (typeof document !== "undefined") (function () {
         const d = (m.date && weekDate({ date: m.date })) || weekDate(w);
         if (!d) { skipped.nodate++; continue; }
         const serial = (Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) - Date.UTC(1899, 11, 30)) / 86400000;
+        if (r.doubleForfeit) skipped.double++;
         rows.push([cfg.league, m.division || "", cfg.season, { t: "n", v: serial, z: "dd/mm/yyyy" }, m.time || "", m.home, m.away, cfg.venue, spawtzArea(m.court), spawtzDuration(m, cfg), r.setsA, r.setsB, "", "", ""]);
       }
     }
@@ -2129,6 +2155,7 @@ if (typeof document !== "undefined") (function () {
     const notes = [];
     if (skipped.none) notes.push(`${skipped.none} with no result yet`);
     if (skipped.defaults) notes.push(`${skipped.defaults} default win${skipped.defaults === 1 ? "" : "s"} for late joiners left out (not fixtures in Spawtz)`);
+    if (skipped.double) notes.push(`${skipped.double} double forfeit${skipped.double === 1 ? "" : "s"} listed as 0–0`);
     if (skipped.nodate) notes.push(`${skipped.nodate} without a date, left out`);
     const btn = el("button", { class: "btn primary", text: `Download ${rows.length} result${rows.length === 1 ? "" : "s"} (.xls)`, disabled: !rows.length, onclick: () => {
       if (typeof XLSX === "undefined") { msg.className = "msg err"; msg.textContent = "The Excel writer didn't load. Refresh and try again."; return; }
