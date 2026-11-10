@@ -2118,22 +2118,18 @@ if (typeof document !== "undefined") (function () {
       v.append(el("h3", { text: div || (groups.length > 1 ? "Other" : st.label) }));
       const head = el("tr", {}, el("th", { class: "l", text: "#" }), el("th", { class: "l", text: "Team" }),
         el("th", { title: "Played", text: "P" }), el("th", { class: "hide-xs", title: "Won", text: "W" }), el("th", { class: "hide-xs", title: "Lost", text: "L" }),
-        el("th", { class: "hide-sm", title: "Won 2–0 / won 2–1 / lost 1–2 / lost 0–2", text: "2-0 2-1 1-2 0-2" }),
-        el("th", { title: "Sets won – sets lost", text: "Sets" }), el("th", { class: "hide-sm", title: "Rally points for minus against", text: "+/-" }),
+        el("th", { title: "Sets won – sets lost", text: "Sets" }), el("th", { class: "hide-sm", title: "Rally points for minus against", text: "Rally +/-" }),
         el("th", { class: "hide-sm l", title: "Last five results, newest last", text: "Form" }),
         el("th", { class: "pts", title: "League points", text: "Pts" }),
-        el("th", { title: "Points per match, used for ranking because some teams play one match fewer", text: "Pts/M" }),
         nextHead ? el("th", { class: "l", title: nextHead.title, text: narrow ? "Next" : nextHead.label }) : null);
       const tb = el("tbody");
       teams.forEach((t, i) => {
         const pd = t.PF - t.PA;
         tb.append(el("tr", { class: teamKey(t.name) === teamKey(state.myTeam) ? "me" : "" }, el("td", { class: "l pos", text: i + 1 }), el("td", { class: "l team-c", text: t.name }),
           el("td", { text: t.P }), el("td", { class: "hide-xs", text: t.W }), el("td", { class: "hide-xs", text: t.L }),
-          el("td", { class: "hide-sm", text: `${t.w20} · ${t.w21} · ${t.l21} · ${t.l20}` }),
           el("td", { text: `${t.SW}–${t.SL}` }), el("td", { class: "hide-sm", text: (pd > 0 ? "+" : "") + pd }),
           el("td", { class: "hide-sm l" }, el("span", { class: "form" }, t.form.slice(-5).map(x => el("i", { class: x === "W" ? "fw" : x === "D" ? "fd" : "fl", text: x })))),
           el("td", { class: "pts", text: t.Pts }),
-          el("td", { text: t.P ? t.PPM.toFixed(2) : "–" }),
           nextHead ? el("td", { class: "l next", text: shortDiv(proj.get(t.name) || "") }) : null));
       });
       v.append(el("div", { class: "tablewrap" }, el("table", {}, el("thead", {}, head), tb)));
