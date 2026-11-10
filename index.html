@@ -1177,7 +1177,7 @@ if (typeof document !== "undefined") (function () {
   const scoreOf = m => state.scores[m.id];
   const hasResult = m => { const s = scoreOf(m); return !!(s && scoreResult(s).complete); };
   // a real game: not a free court or a slot against the stand-in "Free team"
-  const isGame = m => !m.free && !isFreeTeam(m.home) && !isFreeTeam(m.away);
+  const isGame = m => !m.free && !m.decider && !isFreeTeam(m.home) && !isFreeTeam(m.away);
   // organiser only: a counted game whose slot is over with no result, to fill in or chase
   const missingScore = m => { if (!state.canAdmin || !isGame(m) || uncounted(m) || hasResult(m)) return false; const f = findMatch(m.id); const win = f && scoreWindow(m, f.w); return !!win && ukNow() > win.to; };
   const counts = m => { const s = scoreOf(m); return hasResult(m) && s.status !== "disputed"; };
@@ -1326,7 +1326,7 @@ if (typeof document !== "undefined") (function () {
         el("span", { class: "vs" }, el("span", { class: "v", text: "Free court" }), m.note ? el("small", { class: "fnote", text: " · " + m.note }) : null),
         isAdmin ? el("span", { class: "chev", text: "Edit" }) : el("span")));
     }
-    const tags = () => [m.friendly || uncounted(m) ? el("span", { class: "tag2", text: "Friendly" }) : null,
+    const tags = () => [m.decider ? el("span", { class: "tag2 warn", text: "Decider" }) : m.friendly || uncounted(m) ? el("span", { class: "tag2", text: "Friendly" }) : null,
       saved && saved.forfeit ? el("span", { class: "tag2", text: saved.forfeit === "both" ? "Double forfeit" : "Forfeit" }) : null,
       saved && saved.draw ? el("span", { class: "tag2", text: "Draw" }) : null,
       saved && !saved.forfeit && !saved.draw && scoreResult(saved).setsOnly && state.canAdmin ? el("span", { class: "tag2", text: "Sets only" }) : null,
@@ -2111,6 +2111,13 @@ if (typeof document !== "undefined") (function () {
       el("span", { class: "chip" }, el("b", { text: "1" }), " draw"),
       el("span", { class: "chip quiet", text: `${all.filter(counts).length} of ${all.length} played${disp ? ` · ${disp} challenged (not counted)` : ""}` })));
     const proj = projectNext(st.id, groups);
+    // a deciding set still to play (m.decider = what it decides, m.decides = the drawn game it settles) overrides the projection for both teams
+    for (const w2 of state.weeks) for (const dm of w2.matches || []) {
+      if (!dm.decider) continue;
+      const settled = dm.decides && state.scores[dm.decides] && !state.scores[dm.decides].draw && scoreResult(state.scores[dm.decides]).complete;
+      if (settled) continue;
+      for (const n of [dm.home, dm.away]) proj.set(n, "Decider" + (w2.date ? " " + String(w2.date).replace(/^[A-Za-z]+\s+/, "") : ""));
+    }
     const nextHead = { group: { label: "Heading to", title: "Where this position goes after the group stage: 1st and 2nd are drawn at random into Premier A or Premier B (same level), 3rd Division 3 … 6th Division 6" },
       r1: { label: "Next", title: "Top 2 move up a division, bottom 2 move down" },
       r2: { label: "Knockout", title: "Top 8 overall: all of Premier A plus the top 2 of Premier B" } }[st.id];
