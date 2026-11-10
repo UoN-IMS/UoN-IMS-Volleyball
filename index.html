@@ -1789,11 +1789,14 @@ if (typeof document !== "undefined") (function () {
       }
       return null;
     };
-    // everyone sees the same time slot: the latest one that has started (5 min early), else the first of the day
+    // everyone sees the same time slot. A slot's games start 5 minutes in and run its full length, so the courts
+    // keep showing them (and their final scores) until that time is up, and only then move on to the next slot
     const slotTimes = [...new Set((w.matches || []).filter(m => !m.free && ko(m) != null).map(m => m.time))].sort((a, b) => clock(a) - clock(b));
+    const firstOf = t => (w.matches || []).find(m => m.time === t && !m.free);
+    const slotEnd = t => { const m0 = firstOf(t); return ko(m0) + 5 * 60000 + len(m0); };
     let slot = slotTimes[0] || null;
-    if (today) for (const t of slotTimes) { const m0 = (w.matches || []).find(m => m.time === t); if (ko(m0) - 5 * 60000 <= now) slot = t; }
-    const slotStarted = today && slot && ko((w.matches || []).find(m => m.time === slot)) - 5 * 60000 <= now;
+    if (today) for (let i = 1; i < slotTimes.length; i++) { if (now >= slotEnd(slotTimes[i - 1])) slot = slotTimes[i]; else break; }
+    const slotStarted = today && slot && ko(firstOf(slot)) - 5 * 60000 <= now;
     let myNext = null, myHall = -1;
     const slides = [];
     // as laid out on the day: the hall with courts 4-6 first (4, 5, 6), then courts 3, 2, 1, entrance at the bottom
