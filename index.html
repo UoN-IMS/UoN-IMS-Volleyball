@@ -200,6 +200,8 @@ main { padding-block: 20px 60px; }
 .tagrow .tag2:first-child { margin-left: 0; }
 .match.line.free { background: transparent; border-style: dashed; }
 .match.line.free .vs { font-weight: 400; color: var(--muted); }
+.match.missing { border: 2px solid var(--bad); background: color-mix(in srgb, var(--bad) 7%, var(--surface)); }
+.divlabel.missing { color: var(--bad); }
 .fnote { color: var(--muted); }
 .askbox { display: grid; gap: 8px; margin: 0 12px 0 82px; padding: 10px 12px; border-radius: 8px; background: var(--bg); font-size: 14px; }
 .askbox.req { border: 1px solid var(--warn); margin-bottom: 10px; }
@@ -1163,7 +1165,7 @@ if (typeof document !== "undefined") (function () {
   function pickWeek() {
     const ws = state.weeks; if (!ws.length) return null;
     const cur = currentWeekId(); if (cur) return cur;
-    const open = ws.find(w => (w.matches || []).some(m => !hasResult(m)));
+    const open = ws.find(w => (w.matches || []).some(m => isGame(m) && !hasResult(m)));
     return (open || ws[ws.length - 1]).id;
   }
   function allTeams() {
@@ -1173,6 +1175,10 @@ if (typeof document !== "undefined") (function () {
   const stageOf = w => STAGE_BY_ID[w.stage] || null;
   const scoreOf = m => state.scores[m.id];
   const hasResult = m => { const s = scoreOf(m); return !!(s && scoreResult(s).complete); };
+  // a real game: not a free court or a slot against the stand-in "Free team"
+  const isGame = m => !m.free && !isFreeTeam(m.home) && !isFreeTeam(m.away);
+  // organiser only: a counted game whose slot is over with no result, to fill in or chase
+  const missingScore = m => { if (!state.canAdmin || !isGame(m) || uncounted(m) || hasResult(m)) return false; const f = findMatch(m.id); const win = f && scoreWindow(m, f.w); return !!win && ukNow() > win.to; };
   const counts = m => { const s = scoreOf(m); return hasResult(m) && s.status !== "disputed"; };
   const mine = m => state.myTeam && (teamKey(m.home) === teamKey(state.myTeam) || teamKey(m.away) === teamKey(state.myTeam));
 
@@ -1221,7 +1227,7 @@ if (typeof document !== "undefined") (function () {
     let lastStage = null;
     for (const w of state.weeks) {
       if (multiStage && w.stage !== lastStage) { strip.append(el("span", { class: "stagemark", text: stageOf(w) ? stageOf(w).short : "Other" })); lastStage = w.stage; }
-      const all = w.matches || []; const done = all.filter(hasResult).length;
+      const all = (w.matches || []).filter(isGame); const done = all.filter(hasResult).length;
       strip.append(el("button", { "aria-pressed": String(w.id === state.week), class: w.id === currentWeekId() ? "now" : null, onclick: () => { state.week = w.id; if (state.filter) { state.filter = ""; store.set("ims-filter", ""); } renderScores(); } }, w.label, el("span", { class: "count", text: `${done}/${all.length}` })));
     }
     v.append(strip, el("div", { id: "scoresBody" }));
@@ -1253,12 +1259,14 @@ if (typeof document !== "undefined") (function () {
       const w = state.weeks.find(x => x.id === state.week) || state.weeks[0];
       const all = w.matches || [];
       frag.append(weekHead(w, all, false));
-      const games = all.filter(m => !m.free), done = games.filter(hasResult).length;
+      const games = all.filter(isGame), done = games.filter(hasResult).length;
       frag.append(el("div", { class: "progress" }, el("span", { style: `width:${games.length ? (100 * done / games.length) : 0}%` })));
-      // in kick-off order, one heading per time slot; your own match goes first
-      const sorted = byTime(all).sort((a, b) => (mine(b) ? 1 : 0) - (mine(a) ? 1 : 0));
-      const groups = new Map(); for (const m of sorted) { const d = mine(m) ? "Your match" : (m.time || ""); if (!groups.has(d)) groups.set(d, []); groups.get(d).push(m); }
-      for (const [d, list] of groups) { if (d) frag.append(el("div", { class: "divlabel", text: d })); frag.append(cardGrid(list)); }
+      // in kick-off order, one heading per time slot; for the organiser, played games with no score go first, then your own match
+      const rank = m => missingScore(m) ? 0 : mine(m) ? 1 : 2;
+      const sorted = byTime(all).sort((a, b) => rank(a) - rank(b));
+      const MISSING = "No score yet";
+      const groups = new Map(); for (const m of sorted) { const d = missingScore(m) ? MISSING : mine(m) ? "Your match" : (m.time || ""); if (!groups.has(d)) groups.set(d, []); groups.get(d).push(m); }
+      for (const [d, list] of groups) { if (d) frag.append(el("div", { class: "divlabel" + (d === MISSING ? " missing" : ""), text: d === MISSING ? `${MISSING} (${list.length})` : d })); frag.append(cardGrid(list)); }
       if (state.edit && state.edit.isNew && state.edit.week === w.id) frag.append(el("div", { class: "matches" }, editCard(state.edit)));
       else if (editable() && state.canAdmin) frag.append(el("div", { class: "row addrow" }, el("button", { class: "btn", text: "+ Add a game or free court", onclick: () => startEdit(w, null) })));
     }
@@ -1266,7 +1274,7 @@ if (typeof document !== "undefined") (function () {
   }
   function weekHead(w, list, compact) {
     const st = stageOf(w);
-    list = list.filter(m => !m.free);
+    list = list.filter(isGame);
     const done = list.filter(hasResult).length;
     return el("div", { class: "weekhead" + (compact ? " compact" : "") },
       el("div", {}, st ? el("div", { class: "eyebrow", text: st.label }) : null, el("h2", { text: w.label })),
@@ -1333,7 +1341,7 @@ if (typeof document !== "undefined") (function () {
         el("span", { class: "when" }, el("b", { text: m.time || "" }), short.hall ? el("small", { class: "hall", text: short.hall }) : null, el("small", { text: short.court })),
         el("span", { class: "vs" }, nm("A", m.home), el("span", { class: "v", text: " v " }), nm("B", m.away), ...tags()),
         fin ? el("span", { class: "sc", text: `${r.setsA}–${r.setsB}` }) : el("span", { class: "chev", "aria-hidden": "true", text: open ? "▴" : "▾" }));
-      const card = el("article", { class: "match line" + (open ? " open" : "") + (mine(m) ? " mine" : ""), "data-id": m.id }, row);
+      const card = el("article", { class: "match line" + (open ? " open" : "") + (mine(m) ? " mine" : "") + (missingScore(m) ? " missing" : ""), "data-id": m.id }, row);
       if (open) {
         card.append(el("div", { class: "lmeta", text: [m.time, m.court, m.division].filter(Boolean).join(" · ") }));
         if (m.note) card.append(el("div", { class: "mnote", text: m.note }));
@@ -1354,7 +1362,7 @@ if (typeof document !== "undefined") (function () {
       }
       return card;
     }
-    const card = el("article", { class: "match" + (status ? " st-" + status : "") + (mine(m) ? " mine" : ""), "data-id": m.id });
+    const card = el("article", { class: "match" + (status ? " st-" + status : "") + (mine(m) ? " mine" : "") + (missingScore(m) && !dirty ? " missing" : ""), "data-id": m.id });
     const h = head();
     if (state.open[m.id] && !dirty) { h.classList.add("tap"); h.setAttribute("role", "button"); h.tabIndex = 0; h.title = "Close"; h.addEventListener("click", toggle); h.addEventListener("keydown", e => { if (e.key === "Enter") toggle(); }); }
     card.append(h);
@@ -2090,7 +2098,7 @@ if (typeof document !== "undefined") (function () {
     if (st.id === "ko" || st.id === "final") { renderBracket(v, weeks); return; }
 
     const groups = computeStandings(weeks, state.scores);
-    const all = weeks.flatMap(w => w.matches || []);
+    const all = weeks.flatMap(w => w.matches || []).filter(isGame);
     const disp = all.filter(m => hasResult(m) && scoreOf(m).status === "disputed").length;
     v.append(el("div", { class: "chips" },
       el("span", { class: "chip" }, el("b", { text: "3" }), " win 2–0"),
