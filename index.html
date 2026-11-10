@@ -1330,7 +1330,8 @@ if (typeof document !== "undefined") (function () {
       saved && saved.forfeit ? el("span", { class: "tag2", text: saved.forfeit === "both" ? "Double forfeit" : "Forfeit" }) : null,
       saved && saved.draw ? el("span", { class: "tag2", text: "Draw" }) : null,
       saved && !saved.forfeit && !saved.draw && scoreResult(saved).setsOnly && state.canAdmin ? el("span", { class: "tag2", text: "Sets only" }) : null,
-      req && !saved ? el("span", { class: "tag2 warn", text: "Forfeit requested" }) : null];
+      req && !saved ? el("span", { class: "tag2 warn", text: "Forfeit requested" }) : null,
+      !saved && liveCount(m) ? el("span", { class: "tag2 warn", text: "Live " + liveCount(m).a + "–" + liveCount(m).b }) : null];
     const fullBoard = dirty || state.errors[m.id] || state.open[m.id] === "type" || (saved && state.open[m.id]);
     if (!fullBoard) {
       // one line per game; tap it to open
@@ -1347,6 +1348,7 @@ if (typeof document !== "undefined") (function () {
         card.append(el("div", { class: "lmeta", text: [m.time, m.court, m.division].filter(Boolean).join(" · ") }));
         if (m.note) card.append(el("div", { class: "mnote", text: m.note }));
         if (req && !saved) card.append(requestBox(m, req, isAdmin));
+        if (!saved && liveCount(m)) card.append(liveCountBox(m, isAdmin));
         const ask = state.ask[m.id];
         if (ask) card.append(askBox(m, ask, isAdmin));
         else {
@@ -1414,6 +1416,19 @@ if (typeof document !== "undefined") (function () {
     if (state.ask[m.id] && isAdmin && !dirty) card.append(askBox(m, state.ask[m.id], isAdmin));
     else card.append(footer(m, r, dirty, saved, can));
     return card;
+  }
+
+  /* ---------- a live count that was never sent ---------- */
+  function liveCountBox(m, isAdmin) {
+    const lc = liveCount(m);
+    const box = el("div", { class: "askbox" }, el("b", { text: `Live count (not sent yet): ${lc.text}` }),
+      el("span", { class: "msg", text: `Sets ${lc.a}–${lc.b}` + (lc.at ? ` · last saved ${fmtTime(new Date(lc.at).toISOString())}` : "") }));
+    if (isAdmin) box.append(el("div", { class: "actions wrap" }, el("button", { class: "btn primary", text: "Use as result", onclick: () => {
+      // fill the score board with the live sets; check it and press Submit
+      state.drafts[m.id] = [0, 1, 2].map(i => lc.sets[i] ? [lc.sets[i][0], lc.sets[i][1]] : [null, null]);
+      delete totDrafts()[m.id]; state.open[m.id] = "type"; rerenderCard(m);
+    } })));
+    return box;
   }
 
   /* ---------- forfeits ---------- */
@@ -1833,6 +1848,14 @@ if (typeof document !== "undefined") (function () {
   /* one device scores a match at a time: the live doc records which device holds it */
   const DEVICE = (() => { let d = store.get("ims-device"); if (!d) { d = "d" + Math.random().toString(36).slice(2, 10) + Date.now().toString(36); store.set("ims-device", d); } return d; })();
   const liveOf = m => (state.live && state.live[m.id]) || null;
+  // the live count saved to the database as a game is scored, even if its result was never sent
+  function liveCount(m) {
+    const d = liveOf(m); if (!d || !Array.isArray(d.done)) return null;
+    const cur = Array.isArray(d.cur) && (d.cur[0] || d.cur[1]) ? [d.cur] : [];
+    const sets = [...d.done, ...cur].slice(0, 3); if (!sets.length) return null;
+    const a = d.done.filter(x => x[0] > x[1]).length, b = d.done.filter(x => x[1] > x[0]).length;
+    return { sets, a, b, text: sets.map(x => x[0] + "–" + x[1]).join(", "), at: d.seen || d.at };
+  }
   function ownerOf(m) { const d = liveOf(m); return !d || !d.device ? "free" : d.device === DEVICE ? "mine" : "other"; }
   let syncTimer = null;
   function scheduleSync(m) { clearTimeout(syncTimer); syncTimer = setTimeout(() => cloudSave(m, true), 700); }
