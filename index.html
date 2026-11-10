@@ -307,6 +307,7 @@ tr.me td { background: var(--ball-soft); }
 .form i { font-style: normal; font-size: 11px; font-weight: 700; width: 18px; height: 18px; display: inline-grid; place-items: center; border-radius: 4px; }
 .form .fw { background: var(--win-soft); color: var(--win); }
 .form .fl { background: var(--bad-soft); color: var(--bad); }
+.form .fd { background: var(--bg); color: var(--muted); }
 .bracket { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 1fr)); gap: 10px; }
 .bmatch { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
 .bhead { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); padding: 6px 10px; border-bottom: 1px solid var(--line); }
@@ -776,6 +777,8 @@ const DIVISIONS = ["Premier A", "Premier B", "Division 3", "Division 4", "Divisi
 function scoreResult(sc) {
   if (!sc) return evalScore(null);
   // both teams forfeited: a 0-2 loss and no league points for each
+  // a draw, set by the organiser: 1-1 in sets and 1 league point each
+  if (sc.draw) return { complete: true, error: "", warnings: [], setsA: 1, setsB: 1, winner: null, ptsA: 1, ptsB: 1, setWinners: [], setsOnly: !(sc.sets && sc.sets.some(Boolean)), draw: true };
   if (sc.forfeit === "both") return { complete: true, error: "", warnings: [], setsA: 0, setsB: 0, winner: null, ptsA: 0, ptsB: 0, setWinners: [], doubleForfeit: true };
   if (Array.isArray(sc.result) && !(sc.sets && sc.sets.some(Boolean))) {
     const [a, b] = sc.result.map(Number);
@@ -798,7 +801,7 @@ function computeStandings(weeks, scores) {
   const teams = new Map();
   const T = (name, div) => {
     const k = teamKey(name);
-    if (!teams.has(k)) teams.set(k, { name: clean(name), division: div || "", form: [], P: 0, W: 0, L: 0, w20: 0, w21: 0, l21: 0, l20: 0, SW: 0, SL: 0, PF: 0, PA: 0, Pts: 0 });
+    if (!teams.has(k)) teams.set(k, { name: clean(name), division: div || "", form: [], P: 0, W: 0, D: 0, L: 0, w20: 0, w21: 0, l21: 0, l20: 0, SW: 0, SL: 0, PF: 0, PA: 0, Pts: 0 });
     const t = teams.get(k); if (!t.division && div) t.division = div; return t;
   };
   for (const w of weeks) for (const m of w.matches || []) {
@@ -809,8 +812,9 @@ function computeStandings(weeks, scores) {
     for (const [x, y, me] of [[a, b, "A"], [b, a, "B"]]) {
       const mySets = me === "A" ? r.setsA : r.setsB, opp = r.doubleForfeit ? 2 : me === "A" ? r.setsB : r.setsA;
       x.P++; x.SW += mySets; x.SL += opp; x.Pts += me === "A" ? r.ptsA : r.ptsB;
-      x.form.push(r.winner === me ? "W" : "L");
-      if (r.winner === me) { x.W++; opp === 0 ? x.w20++ : x.w21++; } else { x.L++; mySets === 0 ? x.l20++ : x.l21++; }
+      x.form.push(r.draw ? "D" : r.winner === me ? "W" : "L");
+      if (r.draw) x.D++;
+      else if (r.winner === me) { x.W++; opp === 0 ? x.w20++ : x.w21++; } else { x.L++; mySets === 0 ? x.l20++ : x.l21++; }
       if (sc.forfeit && !FORFEIT_RALLIES) continue;
       for (const set of sc.sets || []) { if (set && set[0] != null && set[1] != null) { x.PF += me === "A" ? set[0] : set[1]; x.PA += me === "A" ? set[1] : set[0]; } }
     }
@@ -1300,7 +1304,8 @@ if (typeof document !== "undefined") (function () {
     }
     const tags = () => [m.friendly || uncounted(m) ? el("span", { class: "tag2", text: "Friendly" }) : null,
       saved && saved.forfeit ? el("span", { class: "tag2", text: saved.forfeit === "both" ? "Double forfeit" : "Forfeit" }) : null,
-      saved && !saved.forfeit && scoreResult(saved).setsOnly && state.canAdmin ? el("span", { class: "tag2", text: "Sets only" }) : null,
+      saved && saved.draw ? el("span", { class: "tag2", text: "Draw" }) : null,
+      saved && !saved.forfeit && !saved.draw && scoreResult(saved).setsOnly && state.canAdmin ? el("span", { class: "tag2", text: "Sets only" }) : null,
       req && !saved ? el("span", { class: "tag2 warn", text: "Forfeit requested" }) : null];
     const fullBoard = dirty || state.errors[m.id] || state.open[m.id] === "type" || (saved && state.open[m.id]);
     if (!fullBoard) {
@@ -1395,8 +1400,9 @@ if (typeof document !== "undefined") (function () {
     if (ask === "sets") {
       // the organiser records only who won the sets: league points count, rally points don't
       const pick = (a, b) => el("button", { class: "btn", text: `${a > b ? m.home : m.away} won ${Math.max(a, b)}–${Math.min(a, b)}`, onclick: () => saveSetsOnly(m, a, b, msg) });
-      box.append(el("b", { text: "Sets only: who won, and by how many sets? League points count as usual; no rally points are added." }),
+      box.append(el("b", { text: "Sets only: who won, and by how many sets? League points count as usual (a draw gives each team 1); no rally points are added." }),
         el("div", { class: "actions wrap" }, pick(2, 0), pick(2, 1), pick(1, 2), pick(0, 2),
+          el("button", { class: "btn", text: "Draw 1–1", onclick: () => saveSetsOnly(m, 1, 1, msg) }),
           el("button", { class: "btn ghost", text: "Cancel", onclick: close })), msg);
       return box;
     }
@@ -1429,7 +1435,7 @@ if (typeof document !== "undefined") (function () {
     msg.className = "msg"; msg.textContent = "Saving…";
     try {
       const now = new Date().toISOString();
-      await state.db.doc("scores/" + m.id).set({ sets: null, result: [a, b], side: "org", home: m.home, away: m.away, by: state.myId || null, status: "confirmed", at: now, confirmedSide: "org", confirmedBy: state.myId || null, confirmedAt: now });
+      await state.db.doc("scores/" + m.id).set({ sets: null, result: [a, b], ...(a === b ? { draw: true } : {}), side: "org", home: m.home, away: m.away, by: state.myId || null, status: "confirmed", at: now, confirmedSide: "org", confirmedBy: state.myId || null, confirmedAt: now });
       if (state.requests[m.id]) await state.db.doc("requests/" + m.id).delete().catch(() => {});
       delete state.ask[m.id]; delete state.open[m.id]; delete state.drafts[m.id];
     } catch (e) { msg.className = "msg err"; msg.textContent = "Couldn't save it. Try again."; }
@@ -1573,7 +1579,7 @@ if (typeof document !== "undefined") (function () {
     const line = el("div", { class: "who" });
     const act = el("div", { class: "actions" });
     if (st === "pending" || st === "confirmed") {
-      const cb = saved.forfeit === "both" ? "Both teams forfeited: a 0–2 loss and no points each" : saved.forfeit ? `${sideName(m, saved.forfeit) || "A team"} forfeited, awarded 2–0 by the organiser` : r.setsOnly ? "Sets only, entered by the organiser: league points count, no rally points" : saved.side === "org" ? "Entered by the organiser" : `Sent by ${by}`;
+      const cb = r.draw ? "Draw, entered by the organiser: 1 point each" : saved.forfeit === "both" ? "Both teams forfeited: a 0–2 loss and no points each" : saved.forfeit ? `${sideName(m, saved.forfeit) || "A team"} forfeited, awarded 2–0 by the organiser` : r.setsOnly ? "Sets only, entered by the organiser: league points count, no rally points" : saved.side === "org" ? "Entered by the organiser" : `Sent by ${by}`;
       line.textContent = cb + (saved.at ? " · " + fmtTime(saved.at) : "");
     } else if (st === "disputed") {
       line.append(el("span", { text: `${sideName(m, saved.challengedSide) || "The other captain"} challenged this score` }), saved.note ? el("q", { text: saved.note }) : null, el("span", { text: ". Fix the numbers and resubmit, or the organiser can settle it." }));
@@ -2058,6 +2064,7 @@ if (typeof document !== "undefined") (function () {
       el("span", { class: "chip" }, el("b", { text: "2" }), " win 2–1"),
       el("span", { class: "chip" }, el("b", { text: "1" }), " lose 1–2"),
       el("span", { class: "chip" }, el("b", { text: "0" }), " lose 0–2"),
+      el("span", { class: "chip" }, el("b", { text: "1" }), " draw"),
       el("span", { class: "chip quiet", text: `${all.filter(counts).length} of ${all.length} played${disp ? ` · ${disp} challenged (not counted)` : ""}` })));
     const proj = projectNext(st.id, groups);
     const nextHead = { group: { label: "Heading to", title: "Where this position goes after the group stage: 1st and 2nd are drawn at random into Premier A or Premier B (same level), 3rd Division 3 … 6th Division 6" },
@@ -2083,7 +2090,7 @@ if (typeof document !== "undefined") (function () {
           el("td", { text: t.P }), el("td", { class: "hide-xs", text: t.W }), el("td", { class: "hide-xs", text: t.L }),
           el("td", { class: "hide-sm", text: `${t.w20} · ${t.w21} · ${t.l21} · ${t.l20}` }),
           el("td", { text: `${t.SW}–${t.SL}` }), el("td", { class: "hide-sm", text: (pd > 0 ? "+" : "") + pd }),
-          el("td", { class: "hide-sm l" }, el("span", { class: "form" }, t.form.slice(-5).map(x => el("i", { class: x === "W" ? "fw" : "fl", text: x })))),
+          el("td", { class: "hide-sm l" }, el("span", { class: "form" }, t.form.slice(-5).map(x => el("i", { class: x === "W" ? "fw" : x === "D" ? "fd" : "fl", text: x })))),
           el("td", { class: "pts", text: t.Pts }),
           el("td", { text: t.P ? t.PPM.toFixed(2) : "–" }),
           nextHead ? el("td", { class: "l next", text: shortDiv(proj.get(t.name) || "") }) : null));
