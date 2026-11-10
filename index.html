@@ -846,21 +846,24 @@ function projectNext(stage, groups) {
     // Premier A and B are the same level: the top two of each group are drawn at random between them
     groups.forEach(([g, teams]) => teams.forEach((t, i) => out.set(t.name, i < 2 ? "Premier" : DIVISIONS[i] || "")));
   } else if (stage === "r1") {
+    // Premier A and B are one level: nobody moves between them. Div 3's top 2 go up to Premier, Premier's bottom 2 go down to Div 3
+    const LEVELS = ["Premier", "Division 3", "Division 4", "Division 5", "Division 6"];
+    const level = d => /^premier/i.test(d) ? 0 : LEVELS.indexOf(d);
     for (const [d, teams] of groups) {
-      const di = DIVISIONS.indexOf(d);
+      const li = level(d);
       teams.forEach((t, i) => {
         const n = teams.length;
-        if (di > 0 && i < 2) out.set(t.name, "▲ " + DIVISIONS[di - 1]);
-        else if (di >= 0 && di < DIVISIONS.length - 1 && i >= n - 2) out.set(t.name, "▼ " + DIVISIONS[di + 1]);
+        if (li > 0 && i < 2) out.set(t.name, "▲ " + LEVELS[li - 1]);
+        else if (li >= 0 && li < LEVELS.length - 1 && i >= n - 2) out.set(t.name, "▼ " + LEVELS[li + 1]);
         else out.set(t.name, "Stays");
       });
     }
   } else if (stage === "r2") {
+    // Premier A and B are the same level: the top 4 of each go through, crossed over (A1 v B4, B1 v A4, A2 v B3, B2 v A3)
     const pa = (groups.find(([d]) => d === "Premier A") || [, []])[1], pb = (groups.find(([d]) => d === "Premier B") || [, []])[1];
-    const seeds = [...pa.slice(0, 6), ...pb.slice(0, 2)];
-    const label = ["A1", "A2", "A3", "A4", "A5", "A6", "B1", "B2"];
-    const qf = { 0: "QF1 v B2", 7: "QF1 v A1", 1: "QF2 v B1", 6: "QF2 v A2", 2: "QF3 v A6", 5: "QF3 v A3", 3: "QF4 v A5", 4: "QF4 v A4" };
-    seeds.forEach((t, i) => out.set(t.name, qf[i] || label[i]));
+    const qf = [["QF1 v B4", "QF2 v A4"], ["QF3 v B3", "QF4 v A3"], ["QF4 v B2", "QF3 v A2"], ["QF2 v B1", "QF1 v A1"]];
+    pa.slice(0, 4).forEach((t, i) => out.set(t.name, qf[i][0]));
+    pb.slice(0, 4).forEach((t, i) => out.set(t.name, qf[i][1]));
   }
   return out;
 }
@@ -2146,7 +2149,7 @@ if (typeof document !== "undefined") (function () {
     }
     const nextHead = { group: { label: "Heading to", title: "Where this position goes after the group stage: 1st and 2nd are drawn at random into Premier A or Premier B (same level), 3rd Division 3 … 6th Division 6" },
       r1: { label: "Next", title: "Top 2 move up a division, bottom 2 move down" },
-      r2: { label: "Knockout", title: "Top 8 overall: all of Premier A plus the top 2 of Premier B" } }[st.id];
+      r2: { label: "Knockout", title: "Top 8: the top 4 of Premier A and the top 4 of Premier B, crossed over" } }[st.id];
     // phones: "Premier A" -> "Prem A", "Division 3" -> "Div 3" so the table fits
     const narrow = window.matchMedia && matchMedia("(max-width: 480px)").matches;
     const shortDiv = t => narrow ? String(t).replace(/^Premier\b/, "Prem").replace(/^Division\b/, "Div") : t;
