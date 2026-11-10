@@ -170,6 +170,8 @@ main { padding-block: 20px 60px; }
 .board .setv.setwon { color: var(--ink); font-weight: 800; }
 .board .setv.none { opacity: .45; }
 .board.result input { width: 34px; height: 34px; font-size: 16px; }
+.board.adm { grid-template-columns: minmax(0, 1fr) 56px repeat(3, 44px); }
+.board input.tot, .board.result input.tot { width: 100%; height: 48px; font-size: 26px; font-weight: 800; }
 .board input { width: 44px; height: 40px; text-align: center; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); font-family: var(--display); font-size: 22px; font-weight: 600; font-variant-numeric: tabular-nums; padding: 0; -moz-appearance: textfield; }
 .board input::-webkit-outer-spin-button, .board input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 .board input.setwon { background: var(--ball-soft); border-color: var(--ball); }
@@ -413,6 +415,8 @@ html.live-full header.top, html.live-full nav.tabs, html.live-full .foot, html.l
   .board input { width: 52px; height: 50px; font-size: 24px; }
   .board.result { grid-template-columns: minmax(0, 1fr) 60px repeat(3, 38px); }
   .board.result input { width: 38px; height: 38px; }
+  .board.adm { grid-template-columns: minmax(0, 1fr) 60px repeat(3, 52px); }
+  .board input.tot, .board.result input.tot { height: 52px; font-size: 28px; }
   .board .total { height: 52px; font-size: 32px; }
   .team { font-size: 15px; }
   .mfoot { flex-direction: column; align-items: stretch; }
@@ -1278,6 +1282,17 @@ if (typeof document !== "undefined") (function () {
     if (state.drafts[m.id]) return state.drafts[m.id];
     const s = scoreOf(m); return s && s.sets ? [0, 1, 2].map(i => s.sets[i] ? [...s.sets[i]] : [null, null]) : [[null, null], [null, null], [null, null]];
   }
+  // the organiser can type just the sets won (e.g. 2-1, or 1-1 for a draw) instead of the set scores
+  const totDrafts = () => state.tots || (state.tots = {});
+  function draftResult(m, sets) {
+    const t = totDrafts()[m.id];
+    if (!t) return evalScore(sets);
+    const [a, b] = t;
+    if (a == null || b == null) return { ...evalScore(null), error: "Type the sets won for both teams." };
+    const r = scoreResult({ result: [a, b], draw: a === 1 && b === 1 });
+    if (!r.complete) return { ...evalScore(null), error: "Sets won must be 2–0, 2–1, 1–2, 0–2, or 1–1 for a draw." };
+    return r;
+  }
   const sideName = (m, side) => side === "A" ? m.home : side === "B" ? m.away : "";
   const otherSide = side => side === "A" ? "B" : side === "B" ? "A" : "";
   function mySide(m) { if (!state.myTeam) return ""; if (teamKey(state.myTeam) === teamKey(m.home)) return "A"; if (teamKey(state.myTeam) === teamKey(m.away)) return "B"; return ""; }
@@ -1285,8 +1300,8 @@ if (typeof document !== "undefined") (function () {
   function matchCard(m) {
     const saved = scoreOf(m);
     const sets = currentSets(m);
-    const dirty = !!state.drafts[m.id];
-    const r = dirty || !saved ? evalScore(sets) : scoreResult(saved);
+    const dirty = !!(state.drafts[m.id] || totDrafts()[m.id]);
+    const r = dirty || !saved ? draftResult(m, sets) : scoreResult(saved);
     const can = editable();
     const status = saved && !dirty ? (saved.status || "pending") : "";
     const where = [m.time, m.court].filter(Boolean).join(" · ");
@@ -1327,9 +1342,10 @@ if (typeof document !== "undefined") (function () {
         if (ask) card.append(askBox(m, ask, isAdmin));
         else {
           const acts = el("div", { class: "actions" });
-          acts.append(el("button", { class: "btn primary", text: "Score this game", onclick: () => { state.liveId = m.id; setView("live"); window.scrollTo(0, 0); } }));
-          if (isAdmin) acts.append(el("button", { class: "btn", text: "Type score", onclick: () => { state.open[m.id] = "type"; rerenderCard(m); } }),
-            el("button", { class: "btn", text: "Sets only", onclick: () => { state.ask[m.id] = "sets"; rerenderCard(m); } }),
+          // Score opens live scoring while it's open for this game; otherwise the organiser types the result
+          if (liveOpen(m)) acts.append(el("button", { class: "btn primary", text: "Score", onclick: () => { state.liveId = m.id; setView("live"); window.scrollTo(0, 0); } }));
+          else if (isAdmin) acts.append(el("button", { class: "btn primary", text: "Score", onclick: () => { state.open[m.id] = "type"; rerenderCard(m); } }));
+          if (isAdmin) acts.append(
             el("button", { class: "btn", text: "Forfeit", onclick: () => { state.ask[m.id] = "forfeit"; rerenderCard(m); } }),
             el("button", { class: "btn", text: "Edit", onclick: () => startEdit(findMatch(m.id).w, m) }));
           else if (!req && !saved && !uncounted(m)) acts.append(el("button", { class: "btn ghost", text: "Request forfeit", onclick: () => { state.ask[m.id] = "request"; rerenderCard(m); } }));
@@ -1347,9 +1363,10 @@ if (typeof document !== "undefined") (function () {
     const board = el("div", { class: "board" });
     // a finished match leads with the sets total; the set scores sit smaller beside it
     const done = r.complete && !dirty;
-    if (done) board.classList.add("result");
+    const adm = can && state.canAdmin;
+    if (done) board.classList.add("result"); else if (adm) board.classList.add("adm");
     board.append(el("span"));
-    if (done) board.append(el("span", { class: "colh total-h", text: "Sets" }));
+    if (done || adm) board.append(el("span", { class: "colh total-h" }, "Sets", done ? null : el("small", { text: "won" })));
     board.append(...[1, 2, 3].map(i => el("span", { class: "colh" }, done ? String(i) : "Set " + i, done ? null : el("small", { text: "to " + TARGETS[i - 1] }))));
     ["A", "B"].forEach((side, si) => {
       const name = si === 0 ? m.home : m.away;
@@ -1357,7 +1374,15 @@ if (typeof document !== "undefined") (function () {
       const pts = si ? r.ptsB : r.ptsA;
       board.append(el("div", { class: "team" + (won ? " won" : "") }, el("span", { text: name }),
         done ? el("span", { class: "tag" + (won ? "" : pts ? " lost" : " nil"), title: `${pts} league point${pts === 1 ? "" : "s"}`, text: `+${pts}` }) : null));
-      if (done) board.append(el("div", { class: "total" + (won ? " won" : ""), "aria-label": `${name} won ${si ? r.setsB : r.setsA} sets` }, String(si ? r.setsB : r.setsA)));
+      if (adm) {
+        const td = totDrafts()[m.id];
+        const tv = td ? td[si] : r.complete ? (si ? r.setsB : r.setsA) : null;
+        const ti = el("input", { type: "text", inputmode: "numeric", pattern: "[0-9]*", maxlength: "1", autocomplete: "off", id: `t-${m.id}-${si}`,
+          "aria-label": `${name}, sets won`, value: tv == null ? "" : String(tv), class: "tot" + (won ? " setwon" : ""), disabled: !!state.saving[m.id] });
+        ti.addEventListener("input", () => { const v = ti.value.replace(/[^0-2]/g, "").slice(0, 1); if (v !== ti.value) ti.value = v; onTotInput(m, si, v); });
+        ti.addEventListener("keydown", e => { if (e.key === "Enter") trySave(m); });
+        board.append(ti);
+      } else if (done) board.append(el("div", { class: "total" + (won ? " won" : ""), "aria-label": `${name} won ${si ? r.setsB : r.setsA} sets` }, String(si ? r.setsB : r.setsA)));
       for (let i = 0; i < 3; i++) {
         const val = sets[i] ? sets[i][si] : null;
         const thirdIdle = i === 2 && r.setWinners[0] && r.setWinners[1] && r.setWinners[0] === r.setWinners[1] && val == null;
@@ -1397,15 +1422,6 @@ if (typeof document !== "undefined") (function () {
           el("button", { class: "btn ghost", text: "Cancel", onclick: close })), msg);
       return box;
     }
-    if (ask === "sets") {
-      // the organiser records only who won the sets: league points count, rally points don't
-      const pick = (a, b) => el("button", { class: "btn", text: `${a > b ? m.home : m.away} won ${Math.max(a, b)}–${Math.min(a, b)}`, onclick: () => saveSetsOnly(m, a, b, msg) });
-      box.append(el("b", { text: "Sets only: who won, and by how many sets? League points count as usual (a draw gives each team 1); no rally points are added." }),
-        el("div", { class: "actions wrap" }, pick(2, 0), pick(2, 1), pick(1, 2), pick(0, 2),
-          el("button", { class: "btn", text: "Draw 1–1", onclick: () => saveSetsOnly(m, 1, 1, msg) }),
-          el("button", { class: "btn ghost", text: "Cancel", onclick: close })), msg);
-      return box;
-    }
     const note = el("input", { type: "text", class: "note-in", maxlength: "200", placeholder: "Optional note, e.g. only 3 players turned up" });
     const send = async side => {
       msg.className = "msg"; msg.textContent = "Sending…";
@@ -1431,14 +1447,16 @@ if (typeof document !== "undefined") (function () {
     } else box.append(el("span", { class: "msg", text: "Waiting for the organiser." }));
     return box;
   }
-  async function saveSetsOnly(m, a, b, msg) {
-    msg.className = "msg"; msg.textContent = "Saving…";
+  async function saveSetsOnly(m, a, b) {
+    state.saving[m.id] = true; rerenderCard(m);
     try {
       const now = new Date().toISOString();
       await state.db.doc("scores/" + m.id).set({ sets: null, result: [a, b], ...(a === b ? { draw: true } : {}), side: "org", home: m.home, away: m.away, by: state.myId || null, status: "confirmed", at: now, confirmedSide: "org", confirmedBy: state.myId || null, confirmedAt: now });
       if (state.requests[m.id]) await state.db.doc("requests/" + m.id).delete().catch(() => {});
-      delete state.ask[m.id]; delete state.open[m.id]; delete state.drafts[m.id];
-    } catch (e) { msg.className = "msg err"; msg.textContent = "Couldn't save it. Try again."; }
+      delete state.ask[m.id]; delete state.drafts[m.id]; delete totDrafts()[m.id];
+    } catch (e) { writeError(m, e); }
+    delete state.saving[m.id];
+    renderAll();
   }
   async function forfeit(m, side, msg) {
     msg.className = "msg"; msg.textContent = "Saving…";
@@ -1531,10 +1549,12 @@ if (typeof document !== "undefined") (function () {
     else if (r.complete && !dirty) { if (r.warnings.length) foot.append(el("span", { class: "result warn", text: `Check: ${r.warnings.join(", ").toLowerCase()}` })); }
     else if (r.complete) {
       const wName = r.winner === "A" ? m.home : m.away;
-      foot.append(el("span", { class: "result" + (r.warnings.length ? " warn" : "") }, el("b", { text: `${wName} won ${Math.max(r.setsA, r.setsB)}–${Math.min(r.setsA, r.setsB)}` }),
+      foot.append(el("span", { class: "result" + (r.warnings.length ? " warn" : "") }, el("b", { text: r.draw ? "Draw 1–1, 1 point each" : `${wName} won ${Math.max(r.setsA, r.setsB)}–${Math.min(r.setsA, r.setsB)}` }),
+        r.setsOnly ? " · sets only, no rally points" : "",
         r.warnings.length ? ` · check: ${r.warnings.join(", ").toLowerCase()}` : ""));
-    } else foot.append(el("span", { class: "result", text: can && state.canAdmin ? "Type the set scores, or count them live" : "No score yet" }));
-    if (!saved && !dirty) actions.append(el("button", { class: "btn", text: "Score live", onclick: () => { state.liveId = m.id; setView("live"); window.scrollTo(0, 0); } }));
+    } else foot.append(el("span", { class: "result", text: can && state.canAdmin ? "Type the set scores, or just the sets won (1–1 is a draw)" : "No score yet" }));
+    if (!saved && !dirty && liveOpen(m)) actions.append(el("button", { class: "btn", text: "Score live", onclick: () => { state.liveId = m.id; setView("live"); window.scrollTo(0, 0); } }));
+    if (!dirty && can && state.canAdmin && !(saved && saved.draw)) actions.append(el("button", { class: "btn", text: state.saving[m.id] ? "Saving…" : "Draw", title: "1–1 in sets, 1 point each", disabled: !!state.saving[m.id], onclick: () => saveSetsOnly(m, 1, 1) }));
     if (!saved && !dirty && state.open[m.id]) actions.prepend(el("button", { class: "btn ghost", text: "Close", onclick: () => { delete state.open[m.id]; delete state.errors[m.id]; rerenderCard(m); } }));
 
     if (dirty && mode === "side") {
@@ -1547,7 +1567,7 @@ if (typeof document !== "undefined") (function () {
       wrap.append(pick); return wrap;
     }
     if (dirty) {
-      actions.append(el("button", { class: "btn ghost", text: "Undo", onclick: () => { delete state.drafts[m.id]; delete state.errors[m.id]; delete state.mode[m.id]; delete state.open[m.id]; rerenderCard(m); } }));
+      actions.append(el("button", { class: "btn ghost", text: "Undo", onclick: () => { delete state.drafts[m.id]; delete totDrafts()[m.id]; delete state.errors[m.id]; delete state.mode[m.id]; delete state.open[m.id]; rerenderCard(m); } }));
       actions.append(el("button", { class: "btn primary", text: state.saving[m.id] ? "Saving…" : saved ? "Resubmit" : "Submit", disabled: !r.complete || !!state.saving[m.id], onclick: () => trySave(m) }));
       foot.append(actions); wrap.append(foot);
       return wrap;
@@ -1586,7 +1606,6 @@ if (typeof document !== "undefined") (function () {
       if (state.canAdmin) act.append(el("button", { class: "btn", text: "Accept as entered", onclick: () => respond(m, "confirmed") }));
     }
     if (can && state.canAdmin) act.prepend(el("button", { class: "btn ghost danger", text: "Remove", onclick: () => { state.mode[m.id] = "clear"; rerenderCard(m); } }),
-      el("button", { class: "btn ghost", text: "Sets only", onclick: () => { state.ask[m.id] = "sets"; rerenderCard(m); } }),
       el("button", { class: "btn ghost", text: "Forfeit", onclick: () => { state.ask[m.id] = "forfeit"; rerenderCard(m); } }),
       el("button", { class: "btn ghost", text: "Edit", onclick: () => startEdit(findMatch(m.id).w, m) }));
     wrap.append(el("div", { class: "statusrow" }, line, act));
@@ -1616,11 +1635,20 @@ if (typeof document !== "undefined") (function () {
     const sets = currentSets(m).map(x => x ? [...x] : [null, null]);
     const n = raw === "" ? null : Math.round(Number(raw));
     sets[i][si] = Number.isFinite(n) ? n : null;
-    state.drafts[m.id] = sets; delete state.errors[m.id]; delete state.mode[m.id];
+    state.drafts[m.id] = sets; delete totDrafts()[m.id]; delete state.errors[m.id]; delete state.mode[m.id];
+    rerenderCard(m);
+  }
+  // typing the sets won clears the set scores: the result is saved as sets only
+  function onTotInput(m, si, raw) {
+    const cur = totDrafts()[m.id] || (() => { const sv = scoreOf(m); const r0 = sv ? scoreResult(sv) : null; return r0 && r0.complete ? [r0.setsA, r0.setsB] : [null, null]; })();
+    const t = [...cur]; t[si] = raw === "" ? null : Number(raw);
+    totDrafts()[m.id] = t; delete state.drafts[m.id]; delete state.errors[m.id]; delete state.mode[m.id];
     rerenderCard(m);
   }
 
   function trySave(m) {
+    const t = totDrafts()[m.id];
+    if (t && state.canAdmin) { if (draftResult(m).complete) saveSetsOnly(m, t[0], t[1]); return; }
     const r = evalScore(state.drafts[m.id]); if (!r.complete) return;
     if (state.canAdmin) return save(m, "org");
     const side = mySide(m);
@@ -1693,6 +1721,11 @@ if (typeof document !== "undefined") (function () {
     return { from: ko - WINDOW_PAD * 60000, to: ko + (Number(m.duration || w.duration) || SLOT_MIN) * 60000 + WINDOW_PAD * 60000 };
   }
   const hhmm = ms => new Date(ms).toISOString().slice(11, 16);
+  // whether live scoring is open for this game right now (for everyone, the organiser included)
+  function liveOpen(m) {
+    const f = findMatch(m.id); const win = f && scoreWindow(m, f.w); if (!win) return true;
+    const now = ukNow(); return now >= win.from && now <= win.to;
+  }
   function windowState(m, w) {
     if (state.canAdmin) return "open";
     const win = scoreWindow(m, w); if (!win) return "open";
