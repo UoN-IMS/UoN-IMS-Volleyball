@@ -460,7 +460,6 @@ html.live-full header.top, html.live-full nav.tabs, html.live-full .foot, html.l
     <nav class="tabs" role="tablist">
       <button role="tab" id="tab-scores" aria-selected="true" data-view="scores">Fixtures</button>
       <button role="tab" id="tab-courts" aria-selected="false" data-view="courts">Courts</button>
-      <button role="tab" id="tab-live" aria-selected="false" data-view="live"><span class="tl">Live score</span><span class="ts">Live</span></button>
       <button role="tab" id="tab-standings" aria-selected="false" data-view="standings"><span class="tl">Standings</span><span class="ts">Table</span></button>
       <button role="tab" id="tab-setup" aria-selected="false" data-view="setup" hidden>Setup</button>
     </nav>
@@ -1048,6 +1047,8 @@ if (typeof document !== "undefined") (function () {
   /* tabs */
   document.querySelectorAll("nav.tabs button").forEach(b => b.addEventListener("click", () => setView(b.dataset.view)));
   function setView(v) {
+    // live scoring has no tab: it opens from a game on Fixtures or Courts, and Back returns there
+    if (v === "live" && state.view !== "live") state.liveFrom = state.view;
     state.view = v;
     syncFocus();
     countPage(v);
@@ -1058,7 +1059,7 @@ if (typeof document !== "undefined") (function () {
     render();
   }
   const h0 = location.hash.slice(1);
-  if (h0 === "standings" || h0 === "setup" || h0 === "live" || h0 === "courts") state.view = h0;
+  if (h0 === "standings" || h0 === "setup" || h0 === "courts") state.view = h0;
   if (h0 === "organiser") state.orgOpen = true;
 
   /* ---------- data ---------- */
@@ -1914,6 +1915,7 @@ if (typeof document !== "undefined") (function () {
     const id = state.view === "live" && state.liveId && !state.liveSaved ? state.liveId : null;
     be.focus(id ? ["live/" + id, "scores/" + id] : null);
   }
+  function leaveLive() { state.liveId = null; setView(state.liveFrom && state.liveFrom !== "live" ? state.liveFrom : "scores"); window.scrollTo(0, 0); }
   function renderLive() {
     syncFocus();
     const v = $("#view-live"); v.replaceChildren();
@@ -1922,6 +1924,7 @@ if (typeof document !== "undefined") (function () {
     document.documentElement.classList.toggle("live-full", full);
     if (state.noDb) return;
     const found = state.liveId && findMatch(state.liveId);
+    if (!found && state.ready) { setTimeout(leaveLive, 0); return; }
     if (!found) {
       v.append(el("div", { class: "weekhead" }, el("div", {}, el("div", { class: "eyebrow", text: "Live score" }), el("h2", { text: "Pick your match" }))));
       const curId = currentWeekId() || state.week;
@@ -1951,7 +1954,7 @@ if (typeof document !== "undefined") (function () {
         v.append(el("div", { class: "liveover remote" },
           el("b", { text: `${m.home} v ${m.away}` }),
           el("span", { text: ws === "early" ? `Scoring for this game opens at ${hhmm(win.from)} on ${found.w.date || "match day"}, 15 minutes before kick-off.` : `Scoring for this game closed at ${hhmm(win.to)}. If you still need to send a result, contact the organiser.` }),
-          el("div", { class: "actions" }, el("button", { class: "btn ghost", text: "‹ Matches", onclick: () => { state.liveId = null; renderLive(); } }))));
+          el("div", { class: "actions" }, el("button", { class: "btn ghost", text: "‹ Back", onclick: leaveLive }))));
         return;
       }
     }
@@ -1969,7 +1972,7 @@ if (typeof document !== "undefined") (function () {
     const order = L.swapped ? [1, 0] : [0, 1];
 
     const top = el("div", { class: "livebar" },
-      state.liveFull ? null : el("button", { class: "btn ghost", text: "‹ Matches", onclick: () => { state.liveId = null; renderLive(); } }),
+      state.liveFull ? null : el("button", { class: "btn ghost", text: "‹ Back", onclick: leaveLive }),
       el("div", { class: "liveset" }, over ? "Match over" : `Set ${setNo} · to ${t}`),
       el("div", { class: "livesets" }, L.done.map(([a, b]) => el("span", { class: "chip", text: `${a}–${b}` }))),
       el("button", { class: "btn fullbtn", text: state.liveFull ? "Exit full screen" : "Full screen", onclick: () => setFull(!state.liveFull) }));
@@ -1987,7 +1990,7 @@ if (typeof document !== "undefined") (function () {
         el("span", { text: `${done.length ? "Sets " + done.map(([a, b]) => a + "–" + b).join(", ") + " · " : ""}Set ${done.length + 1}: ${m.home} ${cur[0]}–${cur[1]} ${m.away}` }),
         el("span", { class: "msg", text: `Last update ${ago(d.seen || d.at || Date.now())}. Only one device can score a match. Take over if that device is being swapped out or has died; it will stop scoring.` }),
         el("div", { class: "actions" },
-          el("button", { class: "btn ghost", text: "‹ Matches", onclick: () => { state.liveId = null; renderLive(); } }),
+          el("button", { class: "btn ghost", text: "‹ Back", onclick: leaveLive }),
           el("button", { class: "btn primary big", text: "Take over scoring", onclick: () => takeOver(m) }))));
       return;
     }
