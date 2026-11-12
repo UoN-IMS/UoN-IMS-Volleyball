@@ -70,3 +70,14 @@ The anon/publishable key is designed to be public: the security rules in `schema
 - Free Supabase projects pause after a week with no activity. Weekly use keeps it awake; if it does pause, press **Restore** in the dashboard.
 - To add another organiser, create their user in step 1.4 and run step 1.5 with their email.
 - To back up, run `select * from docs` in the SQL Editor and download the result as CSV.
+
+## Planning the next stage
+
+Setup > **Plan the next stage** works out the fixtures for you:
+
+- **New season:** pick Group stage, paste the teams (one per line) and choose how many groups. The site draws the groups at random (Draw again for a new draw) and makes the round-robin fixtures.
+- **A stage under way** (like Round 1): it carries on from the games already on the site, so no one plays the same team twice.
+- **The next stage:** it reads the table of the stage before and applies the rules (groups 1st/2nd to Premier A/B at random, 3rd to 6th to Div 3 to 6; then top 2 up, bottom 2 down, with only the bottom 1 of each Premier going down; then the top 4 of each Premier crossed over into quarter-finals, semis and the final). A place that isn't certain yet goes in as a placeholder like "Group B 2nd".
+- Fill in the dates, the times and courts (`16:10: C2 C3 D4 D5 D6 | free C1`) and who can't play when (`Robo Soc: not 15:15`, `PhysSoc: 15:15`), make the draft, check it, then publish and download the Spawtz file.
+
+When a placeholder's place becomes certain (all its division's games played, no decider pending, not level on every tiebreak), a notice at the top of the page offers to fill in the real team. It also turns a drawn game into a 2–1 once its deciding set is in.
