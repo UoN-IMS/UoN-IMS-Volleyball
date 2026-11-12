@@ -266,6 +266,15 @@ th.pts { color: var(--ink); }
 .warnlist { margin: 0; padding-left: 18px; color: var(--warn); font-size: 13px; }
 .preview td, .preview th { font-size: 13px; padding: 6px 8px; }
 .weeklist { display: grid; gap: 6px; }
+.plangrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
+.plandiv { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font-size: 14px; }
+.plandiv ol { margin: 4px 0 0; padding-left: 20px; display: grid; gap: 2px; }
+.plandiv li.unsure > span { font-style: italic; }
+.plandiv small { color: var(--muted); }
+.plancols { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; }
+.plancols textarea { min-height: 96px; }
+.planweek summary { cursor: pointer; padding: 4px 0; }
+.preview td.ph { font-style: italic; color: var(--muted); }
 .weeklist .row { justify-content: space-between; border-bottom: 1px solid var(--line); padding-bottom: 6px; }
 .empty { text-align: center; padding: 40px 16px; color: var(--muted); background: var(--surface); border: 1px dashed var(--line); border-radius: var(--radius); }
 .empty h2 { font-family: var(--display); text-transform: uppercase; color: var(--ink); margin: 0 0 6px; font-size: 26px; }
@@ -486,6 +495,11 @@ html.live-full header.top, html.live-full nav.tabs, html.live-full .foot, html.l
         <button class="btn" id="saveName">Save name</button>
         <span class="msg" id="nameMsg"></span>
       </div>
+    </section>
+    <section>
+      <h3>Plan the next stage</h3>
+      <p>Works out who goes where from the tables, then makes the fixtures with times and courts. You check the draft, then publish it and download it for Spawtz.</p>
+      <div id="plannerOut"></div>
     </section>
     <section>
       <h3>Import fixtures</h3>
@@ -871,6 +885,286 @@ function projectNext(stage, groups) {
   return out;
 }
 
+/* ---------- stage planner: who goes where next, and the fixtures for it ----------
+   Everything here is pure (no page, no database) so it can be checked with node. */
+const ordinal = n => n + ((n % 100 >= 11 && n % 100 <= 13) ? "th" : ({ 1: "st", 2: "nd", 3: "rd" })[n % 10] || "th");
+const divShort = d => clean(d).replace(/^Division\b/i, "Div").replace(/^Premier\b/i, "Premier");
+// small seeded random so a draw can be shown, re-drawn, and repeated exactly
+function seededRandom(seed) { let a = (Number(seed) >>> 0) || 1; return () => { a = (a + 0x6D2B79F5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
+function shuffled(list, rnd) { const a = [...list]; for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
+
+/* Round robin by the circle method: rounds of [i, j] index pairs, -1 is a bye.
+   Round 0 is 1st v last, 2nd v 2nd-last, ... (how the 15 Nov fixtures were paired). */
+function roundRobin(n) {
+  const ids = [...Array(n).keys()]; if (n % 2) ids.push(-1);
+  const N = ids.length, rounds = [];
+  for (let r = 0; r < N - 1; r++) {
+    const pairs = [];
+    for (let k = 0; k < N / 2; k++) { const p = [ids[k], ids[N - 1 - k]]; pairs.push(r % 2 ? [p[1], p[0]] : p); }
+    rounds.push(pairs);
+    ids.splice(1, 0, ids.pop());
+  }
+  return rounds;
+}
+
+/* Teams into groups: shuffled, then dealt out like cards so group sizes differ by at most one. seeds (optional) are dealt first, one per group. */
+function drawGroups(teams, nGroups, seed, seeds = []) {
+  const rnd = seededRandom(seed);
+  const seedKeys = new Set(seeds.map(teamKey));
+  const top = shuffled(teams.filter(t => seedKeys.has(teamKey(t))), rnd), rest = shuffled(teams.filter(t => !seedKeys.has(teamKey(t))), rnd);
+  const groups = Array.from({ length: nGroups }, (_, i) => ({ name: "Group " + String.fromCharCode(65 + i), teams: [] }));
+  [...top, ...rest].forEach((t, i) => { const row = Math.floor(i / nGroups), col = row % 2 ? nGroups - 1 - (i % nGroups) : i % nGroups; groups[col].teams.push({ name: t }); });
+  return groups;
+}
+
+/* A seed says where a team comes from. { div: "Group B", pos: 2 } = 2nd in Group B; { winner: "QF1" } = whoever wins QF1. */
+function seedLabel(s) {
+  if (!s) return "";
+  if (s.winner) return "Winner " + s.winner;
+  if (s.loser) return "Loser " + s.loser;
+  return `${divShort(s.div)} ${ordinal(s.pos)}`;
+}
+
+/* Which teams make up the next stage, as seeds. rows: [[division, teams in table order]] from computeStandings of the stage before.
+   Returns { divisions: [{ name, teams: [{ seed }] }], games: [[{ round, home: seed, away: seed }]] } (games only for knockouts). */
+function nextStageEntrants(target, rows, opts = {}) {
+  const rnd = seededRandom(opts.seed || 1);
+  const from = { r1: "group", r2: "r1", ko: "r2" }[target];
+  const levelOf = d => /^premier/i.test(d) ? 0 : (clean(d).match(/^div(?:ision)?\s*(\d+)$/i) || [])[1] ? Number(clean(d).match(/(\d+)/)[1]) - 2 : -1;
+  const divName = lv => lv === 0 ? "Premier" : "Division " + (lv + 2);
+  const sizeOf = d => (rows.find(([n]) => n === d) || [, []])[1].length;
+  if (target === "r1") {
+    // from the groups: 1st and 2nd of each group into Premier, one to A and one to B at random; 3rd -> Division 3, 4th -> Division 4, ...
+    const out = new Map([["Premier A", []], ["Premier B", []]]);
+    const groupRows = rows.filter(([g]) => /^group/i.test(g)).sort((a, b) => divOrder(a[0]) - divOrder(b[0]));
+    for (const [g, teams] of groupRows) {
+      const flip = rnd() < 0.5;
+      teams.forEach((t, i) => {
+        const pos = i + 1, seed = { stage: from, div: g, pos };
+        const d = pos <= 2 ? ((pos === 1) !== flip ? "Premier A" : "Premier B") : "Division " + pos;
+        if (!out.has(d)) out.set(d, []);
+        out.get(d).push({ seed });
+      });
+    }
+    return { divisions: [...out.entries()].map(([name, teams]) => ({ name, teams })) };
+  }
+  if (target === "r2") {
+    // Premier A and B are one level: the bottom 1 of each goes down to Div 3, Div 3's top 2 go up (one to A, one to B, at random).
+    // Below that, top 2 up and bottom 2 down. Nobody moves between Premier A and B.
+    const divs = rows.map(([d]) => d).filter(d => levelOf(d) >= 0).sort((a, b) => divOrder(a) - divOrder(b));
+    const lowest = Math.max(...divs.map(levelOf));
+    const out = new Map(divs.map(d => [d, { stay: [], up: [], down: [] }]));
+    const flip = rnd() < 0.5; let premierIn = 0;
+    for (const d of divs) {
+      const lv = levelOf(d), n = sizeOf(d), goDown = lv === 0 ? 1 : 2;
+      for (let pos = 1; pos <= n; pos++) {
+        const seed = { stage: from, div: d, pos };
+        if (lv > 0 && pos <= 2) {
+          const to = lv === 1 ? ((premierIn++ === 0) !== flip ? "Premier A" : "Premier B") : divName(lv - 1);
+          (out.get(to) || out.set(to, { stay: [], up: [], down: [] }).get(to)).down.push({ seed });
+        } else if (lv < lowest && pos > n - goDown) {
+          const to = divName(lv + 1);
+          (out.get(to) || out.set(to, { stay: [], up: [], down: [] }).get(to)).up.push({ seed });
+        } else out.get(d).stay.push({ seed });
+      }
+    }
+    // order: stayers in table order, then the teams coming down, then the ones coming up
+    return { divisions: divs.map(d => { const x = out.get(d); return { name: d, teams: [...x.stay, ...x.down, ...x.up] }; }) };
+  }
+  if (target === "ko") {
+    // top 4 of each Premier, crossed over; semis are QF1 v QF4 and QF2 v QF3
+    const A = (p) => ({ stage: from, div: "Premier A", pos: p }), B = (p) => ({ stage: from, div: "Premier B", pos: p });
+    return { games: [
+      [{ round: "QF1", home: A(1), away: B(4) }, { round: "QF2", home: B(1), away: A(4) }, { round: "QF3", home: A(2), away: B(3) }, { round: "QF4", home: B(2), away: A(3) }],
+      [{ round: "SF1", home: { winner: "QF1" }, away: { winner: "QF4" } }, { round: "SF2", home: { winner: "QF2" }, away: { winner: "QF3" } }]
+    ] };
+  }
+  if (target === "final") return { games: [[{ round: "Final", home: { winner: "SF1" }, away: { winner: "SF2" } }]] };
+  return { divisions: [] };
+}
+
+/* How sure we are about each seed. weeks: all weeks; scores: all scores. Returns { team, sure, why }. */
+function makeSeedResolver(weeks, scores) {
+  const memo = new Map();
+  const done = m => { const s = scores[m.id]; return !!(s && s.status !== "disputed" && scoreResult(s).complete); };
+  const deciders = weeks.flatMap(w => w.matches || []).filter(m => m.decider && m.decides);
+  const unsettled = id => deciders.some(d => d.decides === id) && (!scores[id] || scores[id].draw);
+  function table(div, st) {
+    const key = st + "|" + div; if (memo.has(key)) return memo.get(key);
+    const ws = weeks.filter(w => (w.matches || []).some(m => clean(m.division) === div && !uncounted(m)));
+    const games = ws.filter(w => (w.stage || "group") === st).flatMap(w => w.matches || []).filter(m => clean(m.division) === div && !uncounted(m));
+    const rows = (computeStandings(ws.filter(w => (w.stage || "group") === st).map(w => ({ ...w, matches: (w.matches || []).filter(m => clean(m.division) === div) })), scores).find(([d]) => d === div) || [, []])[1];
+    const left = games.filter(m => !done(m)).length, open = games.filter(m => unsettled(m.id));
+    const res = { rows, left, open, placeholders: games.some(m => isPlaceholder(m.home) || isPlaceholder(m.away)) };
+    memo.set(key, res); return res;
+  }
+  const same = (a, b) => a && b && a.PPM === b.PPM && a.Pts === b.Pts && (a.SW - a.SL) === (b.SW - b.SL) && (a.PF - a.PA) === (b.PF - b.PA);
+  return function resolve(s) {
+    if (!s) return { team: "", sure: false, why: "" };
+    if (s.winner || s.loser) {
+      const m = weeks.flatMap(w => w.matches || []).find(x => x.round === (s.winner || s.loser));
+      if (!m) return { team: "", sure: false, why: `${s.winner || s.loser} isn't on the fixtures` };
+      if (!done(m)) return { team: "", sure: false, why: `${s.winner || s.loser} not played yet` };
+      const r = scoreResult(scores[m.id]);
+      if (!r.winner) return { team: "", sure: false, why: `${s.winner || s.loser} has no winner` };
+      const won = r.winner === "A" ? m.home : m.away, lost = r.winner === "A" ? m.away : m.home;
+      return { team: s.winner ? won : lost, sure: !isPlaceholder(won) && !isPlaceholder(lost), why: "" };
+    }
+    const t = table(s.div, s.stage || "group"), row = t.rows[s.pos - 1];
+    if (!row) return { team: "", sure: false, why: `${divShort(s.div)} has no ${ordinal(s.pos)} place` };
+    if (t.open.length) return { team: row.name, sure: false, why: `waiting on the ${t.open[0].home} v ${t.open[0].away} decider` };
+    if (t.left) return { team: row.name, sure: false, why: `${t.left} game${t.left === 1 ? "" : "s"} still to play` };
+    if (t.placeholders) return { team: row.name, sure: false, why: "the division still has a placeholder team" };
+    const tie = [t.rows[s.pos - 2], t.rows[s.pos]].find(x => same(x, row));
+    if (tie) return { team: row.name, sure: false, tiePos: t.rows.indexOf(tie) + 1, why: `level with ${tie.name} on every tiebreak, so it needs a decider (or edit the game to pick)` };
+    return { team: row.name, sure: true, why: "" };
+  };
+}
+
+// names that stand in for a team not known yet: "Group B 2nd", "Div 4 1st", "Winner QF1", "Winner Ukr Soc/Net Again"
+const isPlaceholder = n => /^(winner|loser)\b/i.test(clean(n)) || /\b\d+(st|nd|rd|th)$/i.test(clean(n)) && /^(group|div|division|premier)\b/i.test(clean(n));
+
+/* Who won a deciding set: "A" (home) or "B". It's one set, so it's read from the first set or the result; once the drawn game it decides has been made 2-1, that counts too. */
+function deciderWinner(d, scores) {
+  const s = scores[d.id];
+  if (s) {
+    const r = scoreResult(s); if (r.complete && r.winner) return r.winner;
+    const set = Array.isArray(s.sets) && s.sets[0], res = Array.isArray(s.result) && s.result.map(Number);
+    if (set && set[0] != null && set[1] != null && set[0] !== set[1]) return set[0] > set[1] ? "A" : "B";
+    if (res && res[0] !== res[1]) return res[0] > res[1] ? "A" : "B";
+  }
+  const g = d.decides && scores[d.decides];
+  if (g && !g.draw && g.status !== "disputed") { const r = scoreResult(g); if (r.complete && r.winner) { const winName = r.winner === "A" ? g.home : g.away; if (winName) return teamKey(winName) === teamKey(d.home) ? "A" : "B"; } }
+  return "";
+}
+/* "Winner Ukr Soc/Net Again" -> the decider between those two teams. Words match by prefix: "Ukr Soc" = "Ukrainian Society". */
+function resolveDeciderName(name, weeks, scores) {
+  const m = clean(name).match(/^(winner|loser)\s+(.+?)\s*\/\s*(.+)$/i); if (!m) return null;
+  const like = (short, full) => { const a = teamKey(short).split(/\s+/), b = teamKey(full).split(/\s+/); return a.length <= b.length && a.every((w, i) => b[i].startsWith(w)); };
+  for (const w of weeks) for (const d of w.matches || []) {
+    if (!d.decider) continue;
+    const hit = (like(m[2], d.home) && like(m[3], d.away)) || (like(m[2], d.away) && like(m[3], d.home)); if (!hit) continue;
+    const side = deciderWinner(d, scores);
+    if (!side) return { team: "", sure: false, why: "the decider hasn't been played" };
+    const won = side === "A" ? d.home : d.away, lost = side === "A" ? d.away : d.home;
+    return { team: /^winner/i.test(m[1]) ? won : lost, sure: true, why: "" };
+  }
+  return null;
+}
+
+/* Slot plan, one line per time: "16:10: C2 C3 D4 D5 D6 | free C1". Returns [{ time, courts, free }]. */
+function parseSlots(text) {
+  const court = tok => { const x = clean(tok).match(/^(?:hall\s*)?([a-z])\s*(?:·|-|\s)?\s*(?:court\s*)?(\d+)$/i); return x ? `Hall ${x[1].toUpperCase()} · Court ${x[2]}` : ""; };
+  const out = [];
+  for (const line of String(text || "").split(/\n/)) {
+    const m = clean(line).match(/^(\d{1,2})[:.](\d{2})\s*[:=\-]?\s*(.*)$/); if (!m) continue;
+    const [use, free = ""] = m[3].split("|");
+    const list = s => s.replace(/^\s*free\s*/i, "").split(/[,\s]+(?=(?:hall\s*)?[a-z]\s*(?:·|-)?\s*(?:court\s*)?\d)/i).map(court).filter(Boolean);
+    out.push({ time: m[1].padStart(2, "0") + ":" + m[2], courts: list(use), free: list(free) });
+  }
+  return out;
+}
+/* "Robo Soc: not 15:15" or "Freakingham Forest VC: 16:10" (only then). Returns [{ team, not: [], only: [] }]. */
+function parseConstraints(text) {
+  const out = [];
+  for (const line of String(text || "").split(/\n/)) {
+    const m = clean(line).match(/^(.+?)\s*:\s*(not\s+|only\s+)?(.+)$/i); if (!m) continue;
+    const times = (m[3].match(/\d{1,2}[:.]\d{2}/g) || []).map(t => t.replace(".", ":").padStart(5, "0")); if (!times.length) continue;
+    out.push({ team: clean(m[1]), not: /^not/i.test(m[2] || "") ? times : [], only: /^not/i.test(m[2] || "") ? [] : times });
+  }
+  return out;
+}
+function constraintFor(name, rules) { const k = teamKey(name); return rules.filter(r => { const rk = teamKey(r.team); return rk === k || (rk.length >= 4 && k.startsWith(rk)); }); }
+function timeOk(name, time, rules) { return constraintFor(name, rules).every(r => !r.not.includes(time) && (!r.only.length || r.only.includes(time))); }
+
+/* Games for one week into slots and courts. games: [{ division, home, away, ... }] in the order to fill.
+   Games of a division stay together where they can; then games are swapped between slots to meet the constraints. */
+function placeGames(games, slots, rules) {
+  const cap = slots.map(s => s.courts.length), at = slots.map(() => []);
+  let si = 0;
+  for (const g of games) { while (si < slots.length && at[si].length >= cap[si]) si++; if (si >= slots.length) return { placed: null, problems: [`Only ${cap.reduce((a, b) => a + b, 0)} courts for ${games.length} games`] }; at[si].push(g); }
+  const ok = (g, i) => timeOk(g.home, slots[i].time, rules) && timeOk(g.away, slots[i].time, rules);
+  for (let pass = 0; pass < 3; pass++) for (let i = 0; i < at.length; i++) for (let k = 0; k < at[i].length; k++) {
+    const g = at[i][k]; if (ok(g, i)) continue;
+    // move into a slot with a spare court, or swap with a game that's happy in this slot
+    let fixed = false;
+    for (let j = 0; j < at.length && !fixed; j++) { if (j === i || !ok(g, j)) continue;
+      if (at[j].length < cap[j]) { at[j].push(g); at[i].splice(k, 1); k--; fixed = true; break; }
+      for (let q = 0; q < at[j].length; q++) { const h = at[j][q]; if (ok(h, i)) { at[i][k] = h; at[j][q] = g; fixed = true; break; } }
+    }
+  }
+  const problems = [], placed = [];
+  at.forEach((list, i) => list.forEach((g, k) => { if (!ok(g, i)) problems.push(`${g.home} v ${g.away} is at ${slots[i].time}, which ${[g.home, g.away].filter(n => !timeOk(n, slots[i].time, rules)).join(" and ")} can't do`); placed.push({ ...g, time: slots[i].time, court: slots[i].courts[k] }); }));
+  return { placed, problems };
+}
+
+/* Build the weeks of a stage.
+   plan: { stage, divisions: [{ name, teams: [{ name, seed? }] }] or games: [[{ round, home, away }]], dates: [Date], slots, rules, startRound, weekNo }
+   Team names come from opts.nameOf(seed) for seeded teams (a placeholder until the place is certain). */
+function buildStageWeeks(plan) {
+  const weeks = [], problems = [];
+  const nameOf = t => t.name || seedLabel(t.seed);
+  const rr = (plan.divisions || []).map(d => ({ d, rounds: roundRobin(d.teams.length) }));
+  plan.dates.forEach((date, wi) => {
+    let games = [];
+    if (plan.games) {
+      for (const g of plan.games[wi] || []) games.push({ division: g.division || (/^final/i.test(g.round) ? "Final" : /^sf/i.test(g.round) ? "Semi-final" : "Quarter-final"), round: g.round, home: g.homeName || seedLabel(g.home), away: g.awayName || seedLabel(g.away), seedHome: g.home, seedAway: g.away });
+    } else {
+      // divisions take turns at the early slot: the order moves round by one each week
+      const order = rr.map((x, i) => rr[(i + wi) % rr.length]);
+      for (const { d, rounds } of order) {
+        const ri = (plan.startRound || 0) + wi, R = rounds.length;
+        if (ri >= 2 * R) continue;
+        for (let [i, j] of rounds[ri % R]) {
+          if (i < 0 || j < 0) { const bye = d.teams[i < 0 ? j : i]; problems.push(`${shortDate(date)}: ${nameOf(bye)} (${d.name}) has no game`); continue; }
+          if (ri >= R) [i, j] = [j, i]; // second time round, home and away swap
+          const h = d.teams[i], a = d.teams[j];
+          games.push({ division: d.name, home: nameOf(h), away: nameOf(a), seedHome: h.seed || null, seedAway: a.seed || null });
+        }
+      }
+    }
+    const { placed, problems: p } = placeGames(games, plan.slots, plan.rules || []);
+    p.forEach(x => problems.push(`${shortDate(date)}: ${x}`));
+    if (!placed) { problems.push(`${shortDate(date)}: not enough courts`); return; }
+    const no = (plan.weekNo || 1) + wi, id = `w-${plan.stage}-week-${no}`;
+    const ids = new Set();
+    const matches = placed.map(g => {
+      let mid = `${id}--${slug(g.home)}--${slug(g.away)}`; while (ids.has(mid)) mid += "-2"; ids.add(mid);
+      const m = { id: mid, home: g.home, away: g.away, time: g.time, court: g.court, division: g.division };
+      if (g.round) m.round = g.round;
+      if (g.seedHome) m.seedHome = g.seedHome;
+      if (g.seedAway) m.seedAway = g.seedAway;
+      return m;
+    });
+    plan.slots.forEach(s => s.free.forEach((c, k) => matches.push({ id: `${id}--free-${s.time.replace(":", "")}-${k + 1}`, home: "", away: "", free: true, time: s.time, court: c, division: "" })));
+    matches.sort((a, b) => a.time.localeCompare(b.time) || a.court.localeCompare(b.court));
+    weeks.push({ id, label: "Week " + no, date: shortDate(date), stage: plan.stage, order: no, matches });
+  });
+  return { weeks, problems };
+}
+
+/* For a stage already under way: each division's teams in circle order, read back from its first week, and how many rounds are done.
+   Any pairing of 1st v 6th, 2nd v 5th, 3rd v 4th is round 0 of some circle order, so the rounds that follow never repeat a game. */
+function continueFromWeeks(stageWeeks) {
+  const byDiv = new Map();
+  const sorted = [...stageWeeks].sort((a, b) => (a.order || 0) - (b.order || 0));
+  for (const w of sorted) for (const m of w.matches || []) {
+    if (uncounted(m) || m.decider || !m.division) continue;
+    if (!byDiv.has(m.division)) byDiv.set(m.division, { first: w.id, pairs: [], weeks: new Set() });
+    const d = byDiv.get(m.division); d.weeks.add(w.id);
+    if (w.id === d.first) d.pairs.push([m.home, m.away, m.seedHome, m.seedAway]);
+  }
+  return [...byDiv.entries()].sort((a, b) => divOrder(a[0]) - divOrder(b[0])).map(([name, d]) => {
+    const n = d.pairs.length * 2, teams = Array(n);
+    d.pairs.forEach(([h, a, sh, sa], k) => { teams[k] = { name: h, seed: sh || null }; teams[n - 1 - k] = { name: a, seed: sa || null }; });
+    return { name, teams, played: d.weeks.size };
+  });
+}
+
+/* Sundays from a date: next n of them, starting the Sunday after `after`. */
+function nextSundays(after, n) { const d = new Date(after.getFullYear(), after.getMonth(), after.getDate()); const out = []; do d.setDate(d.getDate() + 1); while (d.getDay() !== 0); for (let i = 0; i < n; i++) { out.push(new Date(d)); d.setDate(d.getDate() + 7); } return out; }
+const DEFAULT_SLOTS = "15:15: D4 D5 D6 | free C1\n16:10: C2 C3 D4 D5 D6 | free C1\n17:05: C2 C3 D4 D5 D6 | free C1\n18:00: C2 C3 D4 D5 D6 | free C1";
+
 const SAMPLE = [
   ["Stage", "Week", "Date", "Time", "Court", "Division", "Home", "Away"],
   ["Group stage", "1", "Sun 2 Nov", "10:00", "Court 1", "Pool A", "Block Party", "Net Gains"],
@@ -883,7 +1177,7 @@ const SAMPLE = [
   ["", "", "", "11:00", "Court 2", "Casual", "Sets on the Beach", "Serve-ivors"]
 ].map(r => r.join("\t")).join("\n");
 
-if (typeof module !== "undefined") module.exports = { uncounted, forfeitSets, courtLabel, spawtzArea, ukDate, shortDate, setError, setOver, STAGES, DIVISIONS, scoreResult, projectNext, stageId, textToRows, parseFixtures, groupWeeks, evalScore, computeStandings };
+if (typeof module !== "undefined") module.exports = { uncounted, forfeitSets, courtLabel, spawtzArea, ukDate, shortDate, setError, setOver, STAGES, DIVISIONS, scoreResult, projectNext, stageId, textToRows, parseFixtures, groupWeeks, evalScore, computeStandings, roundRobin, drawGroups, seedLabel, nextStageEntrants, makeSeedResolver, isPlaceholder, resolveDeciderName, deciderWinner, parseSlots, parseConstraints, placeGames, buildStageWeeks, continueFromWeeks, nextSundays, DEFAULT_SLOTS };
 </script>
 
 <script>
@@ -1215,6 +1509,7 @@ if (typeof document !== "undefined") (function () {
     const b = $("#banner"); b.replaceChildren();
     if (state.noDb) b.append(el("div", { class: "notice warn" }, el("div", {}, el("strong", { text: "This site isn't connected to its database yet. " }), "Add the Supabase URL and anon key to config.js (see the README).")));
     else if (state.loadError) b.append(el("div", { class: "notice warn" }, el("div", {}, el("strong", { text: "Couldn't load the league. " }), "Check your connection and refresh the page.")));
+    else { const n = fillsNotice(); if (n) b.append(n); }
   }
 
   /* ---------- fixtures ---------- */
@@ -2205,6 +2500,231 @@ if (typeof document !== "undefined") (function () {
     }
   }
 
+  /* ---------- planner: the next stage's teams and fixtures ---------- */
+  const plan = () => state.plan || (state.plan = { stage: "", seed: 1, dates: "", datesFor: "", draft: null, teams: "", groups: 6, msg: "" });
+  const plannerCfg = () => (state.league && state.league.planner) || {};
+  const STAGE_FROM = { r1: "group", r2: "r1", ko: "r2", final: "ko" };
+  const weeksOf = id => state.weeks.filter(w => (w.stage || "group") === id);
+  function lastWeekDate() { const ds = state.weeks.map(weekDate).filter(Boolean).sort((a, b) => a - b); return ds[ds.length - 1] || new Date(); }
+  function nextWeekNo() { return state.weeks.reduce((a, w) => { const n = String(w.label || "").match(/^week (\d+)$/i); return n ? Math.max(a, Number(n[1])) : a; }, 0) + 1; }
+  function parseDates(text) { return String(text || "").split(/[\n,]+/).map(s => ukDate(s.trim())).filter(Boolean); }
+  const ddmm = d => `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`;
+
+  /* What the chosen stage would be made of. kind: "continue" (stage under way), "seeded" (from the stage before), "games" (knockouts), "groups" (new season) */
+  function plannerSource(stage) {
+    const P = plan(), have = weeksOf(stage), resolve = makeSeedResolver(state.weeks, state.scores);
+    if (have.length && stage !== "ko" && stage !== "final") {
+      const divs = continueFromWeeks(have);
+      const rounds = Math.max(0, ...divs.map(d => roundRobin(d.teams.length).length - d.played));
+      return { kind: "continue", divisions: divs, rounds, resolve };
+    }
+    if (have.length) return { kind: "done", resolve };
+    if (stage === "group") {
+      const names = P.teams.split(/\n/).map(clean).filter(Boolean);
+      const groups = names.length >= 2 ? drawGroups(names, Math.max(1, Math.min(Number(P.groups) || 1, Math.floor(names.length / 2))), P.seed) : [];
+      return { kind: "groups", divisions: groups, rounds: Math.max(0, ...groups.map(g => roundRobin(g.teams.length).length)), resolve };
+    }
+    const from = STAGE_FROM[stage];
+    const rows = computeStandings(weeksOf(from), state.scores);
+    const ent = nextStageEntrants(stage, rows, { seed: P.seed });
+    if (ent.games) {
+      const fill = s => { const r = resolve(s); return r.sure ? r.team : ""; };
+      const games = ent.games.map(day => day.map(g => ({ ...g, homeName: fill(g.home), awayName: fill(g.away) })));
+      return { kind: "games", games, rounds: games.length, resolve, fromHas: weeksOf(from).length };
+    }
+    // two teams level on everything only matters if they're heading to different places
+    const sameDest = (d, s, pos) => d.teams.some(o => o.seed.div === s.div && o.seed.pos === pos);
+    const divisions = ent.divisions.map(d => ({ name: d.name, teams: d.teams.map(t => {
+      let r = resolve(t.seed);
+      if (r.tiePos && sameDest(d, t.seed, r.tiePos)) r = { ...r, sure: true, why: "" };
+      return { seed: t.seed, name: r.sure ? r.team : "", now: r };
+    }) }));
+    return { kind: "seeded", divisions, rounds: Math.max(0, ...divisions.map(d => roundRobin(d.teams.length).length)), resolve, fromHas: weeksOf(from).length };
+  }
+
+  function renderPlanner() {
+    const out = $("#plannerOut"); if (!out) return;
+    if (out.contains(document.activeElement) && /^(TEXTAREA|INPUT)$/.test(document.activeElement.tagName)) return; // don't redraw under someone typing
+    out.replaceChildren();
+    const P = plan(), cfg = plannerCfg();
+    if (!P.picked) {
+      // default: the stage under way if it still has rounds to go, otherwise the next one with no fixtures
+      const live = [...STAGES].reverse().find(s => weeksOf(s.id).length);
+      const pick = live ? (live.id !== "ko" && live.id !== "final" && plannerSource(live.id).rounds > 0 ? live.id : (STAGES[STAGES.indexOf(live) + 1] || live).id) : "group";
+      if (pick !== P.stage) { P.stage = pick; P.draft = null; P.dates = ""; }
+    }
+    const src = plannerSource(P.stage);
+    const sel = el("select", { class: "search", "aria-label": "Stage to plan" }, STAGES.map(s => el("option", { value: s.id, text: s.label, selected: s.id === P.stage })));
+    sel.addEventListener("change", () => { state.plan = { ...P, stage: sel.value, picked: true, draft: null, dates: "", msg: "" }; renderPlanner(); });
+    out.append(el("div", { class: "row" }, sel));
+    const st = STAGE_BY_ID[P.stage];
+
+    if (src.kind === "done") { out.append(el("p", { text: `${st.label} fixtures are already on the site.` })); return; }
+    if (src.kind === "continue") out.append(el("p", {}, el("b", { text: src.rounds ? `${st.label} is under way. ` : `${st.label} is all planned. ` }), src.rounds ? `This makes the next ${src.rounds} round${src.rounds === 1 ? "" : "s"}, carrying on from the games already on the site so no one plays the same team twice.` : "Every team has played every other team in its division. Pick the next stage to plan it."));
+    if (src.kind === "seeded" || src.kind === "games") {
+      if (!src.fromHas) { out.append(el("p", { text: `There are no ${STAGE_BY_ID[STAGE_FROM[P.stage]].label.toLowerCase()} games yet, so there's nothing to work from.` })); return; }
+      const unsure = (src.divisions || []).flatMap(d => d.teams).filter(t => !t.now.sure).length;
+      out.append(el("p", {}, `Worked out from the ${STAGE_BY_ID[STAGE_FROM[P.stage]].label.toLowerCase()} table. `,
+        unsure ? el("b", { text: `${unsure} place${unsure === 1 ? " isn't" : "s aren't"} certain yet, so ${unsure === 1 ? "it goes" : "they go"} in as a placeholder (like “Group B 2nd”). ` }) : "",
+        unsure ? "Once the place is certain, the site offers to swap in the real team." : ""));
+    }
+    if (src.kind === "groups") {
+      const ta = el("textarea", { placeholder: "One team per line", "aria-label": "Teams", style: "min-height:120px" }); ta.value = P.teams;
+      ta.addEventListener("input", () => { P.teams = ta.value; P.draft = null; });
+      ta.addEventListener("blur", () => setTimeout(renderPlanner, 0));
+      const ng = el("input", { type: "text", inputmode: "numeric", value: String(P.groups), "aria-label": "Number of groups", style: "width:70px" });
+      ng.addEventListener("change", () => { P.groups = Number(ng.value) || 1; P.draft = null; P.dates = ""; ng.blur(); renderPlanner(); });
+      out.append(el("p", { text: "New season: paste the teams, choose how many groups, and the site draws them at random." }), ta,
+        el("div", { class: "row" }, el("label", { class: "field" }, "Groups", ng)));
+    }
+
+    // who's in each division (or the knockout games)
+    if (src.divisions && src.divisions.length) {
+      const grid = el("div", { class: "plangrid" });
+      for (const d of src.divisions) {
+        grid.append(el("div", { class: "plandiv" }, el("b", { text: d.name }), el("ol", {}, d.teams.map(t => {
+          if (src.kind === "seeded") return el("li", { class: t.now.sure ? "" : "unsure" }, el("span", { text: t.now.sure ? t.now.team : seedLabel(t.seed) }), el("small", { text: t.now.sure ? " " + seedLabel(t.seed) : ` now ${t.now.team || "?"}: ${t.now.why}` }));
+          return el("li", { text: t.name });
+        }))));
+      }
+      out.append(grid);
+      if (src.kind === "groups" || (src.kind === "seeded" && /premier/i.test(src.divisions.map(d => d.name).join()))) {
+        out.append(el("div", { class: "row" }, el("button", { class: "btn ghost", text: src.kind === "groups" ? "Draw again" : "Redraw Premier A / B", onclick: () => { P.seed = (P.seed * 7 + 13) % 100000 || 1; P.draft = null; renderPlanner(); } }),
+          el("span", { class: "msg", text: src.kind === "groups" ? "" : "Which Premier each team goes into is drawn at random." })));
+      }
+    }
+    if (src.games) {
+      out.append(el("div", { class: "plangrid" }, src.games.flat().map(g => el("div", { class: "plandiv" }, el("b", { text: g.round }),
+        el("div", { text: `${g.homeName || seedLabel(g.home)} v ${g.awayName || seedLabel(g.away)}` })))));
+    }
+    if (!src.rounds) return;
+
+    // dates, slots and who can't play when
+    if (!P.dates || P.datesFor !== P.stage) { P.dates = nextSundays(lastWeekDate(), src.rounds).map(ddmm).join("\n"); P.datesFor = P.stage; }
+    const box = (label, value, onv, ph, h) => { const t = el("textarea", { "aria-label": label, placeholder: ph || "", style: `min-height:${h || 96}px` }); t.value = value; t.addEventListener("input", () => { onv(t.value); P.draft = null; }); return el("label", { class: "field" }, label, t); };
+    if (P.slots == null) P.slots = cfg.slots || DEFAULT_SLOTS;
+    if (P.rules == null) P.rules = cfg.rules || "";
+    out.append(el("div", { class: "plancols" },
+      box(`Dates (${src.rounds} needed, one per line)`, P.dates, v => P.dates = v, "22/11/2026"),
+      box("Times and courts", P.slots, v => P.slots = v, "16:10: C2 C3 D4 D5 D6 | free C1"),
+      box("Who can't play when", P.rules, v => P.rules = v, "Robo Soc: not 15:15\nFreakingham Forest VC: 16:10")));
+    out.append(el("p", { text: "Times: one line per slot, then the courts (C2 = Hall C Court 2), and after | any court that stays free. Teams: “not 15:15” or just the times they can do. Divisions take turns at the early slot." }));
+    const msg = el("span", { class: "msg", text: P.msg || "" });
+    out.append(el("div", { class: "row" }, el("button", { class: "btn primary", text: P.draft ? "Make the draft again" : "Make draft fixtures", onclick: () => makeDraft(src) }), msg));
+    if (P.draft) renderDraft(out, P.draft);
+  }
+
+  function makeDraft(src) {
+    const P = plan();
+    const dates = parseDates(P.dates), slots = parseSlots(P.slots), rules = parseConstraints(P.rules);
+    if (!dates.length) { P.msg = "Add at least one date, like 22/11/2026."; P.draft = null; return renderPlanner(); }
+    if (!slots.length) { P.msg = "Add at least one time, like 16:10: C2 C3 D4."; P.draft = null; return renderPlanner(); }
+    const base = { stage: P.stage, dates: dates.slice(0, src.rounds), slots, rules, weekNo: nextWeekNo() };
+    let r;
+    if (src.kind === "games") r = buildStageWeeks({ ...base, games: src.games });
+    else if (src.kind === "continue") {
+      // divisions can be at different rounds; build each from where it is
+      const byStart = new Map(); for (const d of src.divisions) { const k = d.played; if (!byStart.has(k)) byStart.set(k, []); byStart.get(k).push(d); }
+      r = byStart.size === 1 ? buildStageWeeks({ ...base, divisions: src.divisions, startRound: src.divisions[0].played }) : null;
+      if (!r) { P.msg = "The divisions are at different rounds, so they can't be planned together yet."; P.draft = null; return renderPlanner(); }
+    } else r = buildStageWeeks({ ...base, divisions: src.divisions });
+    if (dates.length < src.rounds) r.problems.unshift(`Only ${dates.length} of the ${src.rounds} dates needed, so the last ${src.rounds - dates.length} round${src.rounds - dates.length === 1 ? " is" : "s are"} left out.`);
+    P.draft = r; P.msg = ""; renderPlanner();
+  }
+
+  function renderDraft(out, d) {
+    if (d.problems.length) out.append(el("ul", { class: "warnlist" }, d.problems.map(p => el("li", { text: p }))));
+    for (const w of d.weeks) {
+      const games = w.matches.filter(m => !m.free);
+      out.append(el("details", { class: "planweek", open: w === d.weeks[0] }, el("summary", {}, el("b", { text: `${w.label} · ${w.date}` }), ` · ${games.length} games`),
+        el("div", { class: "tablewrap preview" }, el("table", {}, el("thead", {}, el("tr", {}, ["Time", "Court", "Division", "Home", "Away"].map(h => el("th", { class: "l", text: h })))),
+          el("tbody", {}, games.map(m => el("tr", {}, [m.time, m.court, m.division || m.round, m.home, m.away].map((t, i) => el("td", { class: "l" + (i > 2 && isPlaceholder(t) ? " ph" : ""), text: t })))))))));
+    }
+    const clash = d.weeks.filter(w => state.weeks.some(x => x.id === w.id));
+    const msg = el("span", { class: "msg" });
+    out.append(el("div", { class: "row" },
+      el("button", { class: "btn primary", text: `Publish ${d.weeks.length} week${d.weeks.length === 1 ? "" : "s"} to the site`, disabled: !!clash.length || !d.weeks.length, onclick: e => publishDraft(d, msg, e.target) }),
+      el("button", { class: "btn", text: "Download for Spawtz (.xls)", disabled: !d.weeks.length, onclick: () => downloadFixtures(d.weeks) }), msg));
+    if (clash.length) out.append(el("p", { class: "msg err", text: `${clash.map(w => w.label).join(", ")} already ${clash.length === 1 ? "is" : "are"} on the site. Remove ${clash.length === 1 ? "it" : "them"} under Weeks on the site first.` }));
+    else out.append(el("p", { text: "Nothing changes on the site until you publish. Captains see the new weeks on Fixtures straight away after that." }));
+  }
+
+  async function publishDraft(d, msg, btn) {
+    const P = plan();
+    btn.disabled = true; msg.className = "msg"; msg.textContent = "Publishing…";
+    try {
+      for (const w of d.weeks) { const { id, ...data } = w; await state.db.doc("weeks/" + id).set(data); }
+      await state.db.doc("config/league").update({ planner: { slots: P.slots, rules: P.rules } });
+      state.plan = null; state.stage = null;
+      msg.className = "msg ok"; msg.textContent = "Published. They're on the Fixtures tab now.";
+    } catch (e) { btn.disabled = false; msg.className = "msg err"; msg.textContent = "Couldn't publish: " + (e.message || e); }
+  }
+
+  function downloadFixtures(weeks) {
+    const cfg = spawtzSettings(); const rows = [];
+    for (const w of weeks) for (const m of w.matches) {
+      if (uncounted(m)) continue;
+      const dt = weekDate(w); if (!dt) continue;
+      const serial = (Date.UTC(dt.getFullYear(), dt.getMonth(), dt.getDate()) - Date.UTC(1899, 11, 30)) / 86400000;
+      rows.push([cfg.league, m.division || "", cfg.season, { t: "n", v: serial, z: "dd/mm/yyyy" }, m.time || "", m.home, m.away, cfg.venue, spawtzArea(m.court), spawtzDuration(m, cfg), "", "", "", "", ""]);
+    }
+    const ws = XLSX.utils.aoa_to_sheet([SPAWTZ_HEAD, ...rows]); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "Sheet1");
+    XLSX.writeFile(wb, `spawtz-fixtures-${slug(weeks[0].label)}${weeks.length > 1 ? "-to-" + slug(weeks[weeks.length - 1].label) : ""}.xls`, { bookType: "biff8" });
+  }
+
+  /* Placeholders that are now settled: swap in the real team (same game id, so nothing else moves), and settle a drawn game once its decider is in. */
+  function pendingFills() {
+    const resolve = makeSeedResolver(state.weeks, state.scores), out = [];
+    for (const w of state.weeks) for (const m of w.matches || []) {
+      if (m.free || hasResult(m)) continue;
+      for (const [side, key] of [["home", "seedHome"], ["away", "seedAway"]]) {
+        const name = m[side]; let r = null;
+        if (m[key]) {
+          r = resolve(m[key]);
+          // level with a team going to the same division: either way round is fine
+          const tied = r.tiePos && (w.matches || []).some(o => o.division === m.division && [o.seedHome, o.seedAway].some(x => x && x.div === m[key].div && x.stage === m[key].stage && x.pos === r.tiePos));
+          if (tied) r = { ...r, sure: true };
+        } else if (isPlaceholder(name)) r = resolveDeciderName(name, state.weeks, state.scores);
+        if (r && r.sure && r.team && teamKey(r.team) !== teamKey(name)) out.push({ kind: "team", week: w.id, id: m.id, side, from: name, to: r.team });
+      }
+    }
+    for (const w of state.weeks) for (const d of w.matches || []) {
+      if (!d.decider || !d.decides) continue;
+      const s = state.scores[d.decides], side = deciderWinner(d, state.scores);
+      if (!s || !s.draw || !side) continue;
+      const f = findMatch(d.decides); if (!f) continue;
+      const winner = side === "A" ? d.home : d.away;
+      out.push({ kind: "settle", id: d.decides, winner, home: f.m.home, away: f.m.away, when: d.date || w.date || "" });
+    }
+    return out;
+  }
+  async function applyFills(list, msg) {
+    msg.className = "msg"; msg.textContent = "Filling in…";
+    try {
+      const byWeek = new Map(); for (const f of list.filter(x => x.kind === "team")) { if (!byWeek.has(f.week)) byWeek.set(f.week, []); byWeek.get(f.week).push(f); }
+      for (const [wid, fs] of byWeek) {
+        const w = state.weeks.find(x => x.id === wid);
+        const matches = (w.matches || []).map(m => { let x = m; for (const f of fs) if (f.id === m.id) x = { ...x, [f.side]: f.to }; return x; });
+        await state.db.doc("weeks/" + wid).update({ matches });
+      }
+      for (const f of list.filter(x => x.kind === "settle")) {
+        const old = state.scores[f.id] || {}, homeWon = teamKey(f.winner) === teamKey(f.home);
+        const { draw, ...rest } = old;
+        await state.db.doc("scores/" + f.id).set({ ...rest, result: homeWon ? [2, 1] : [1, 2], sets: null, note: `Was a draw; ${f.winner} won the deciding set`, at: new Date().toISOString() });
+      }
+      msg.className = "msg ok"; msg.textContent = "Done.";
+    } catch (e) { msg.className = "msg err"; msg.textContent = "Couldn't fill them in: " + (e.message || e); }
+  }
+  function fillsNotice() {
+    if (!state.canAdmin || !state.db || !state.scoresLoaded) return null;
+    const list = pendingFills(); if (!list.length) return null;
+    const msg = el("span", { class: "msg" });
+    const lines = list.map(f => f.kind === "team" ? `${f.from} → ${f.to}` : `${f.home} v ${f.away} becomes 2–1 to ${f.winner} (decider)`);
+    const uniq = [...new Set(lines)];
+    return el("div", { class: "notice" }, el("div", {}, el("strong", { text: `${uniq.length} place${uniq.length === 1 ? " is" : "s are"} now settled. ` }), uniq.slice(0, 6).join(" · "), uniq.length > 6 ? ` · and ${uniq.length - 6} more` : "",
+      el("div", { class: "row" }, el("button", { class: "btn primary", text: "Fill them in", onclick: () => applyFills(list, msg) }), msg)));
+  }
+
   /* ---------- setup ---------- */
   function stageSelect(id, value, onchange, withAuto) {
     const s = el("select", { id, class: "search" }, withAuto ? el("option", { value: "", text: "Stage: from the sheet (or Group stage)" }) : null,
@@ -2266,6 +2786,7 @@ if (typeof document !== "undefined") (function () {
   }
   function renderSetup() {
     renderStats();
+    renderPlanner();
     renderPreview();
     renderSpawtz();
     const wl = $("#weekList"); wl.replaceChildren();
