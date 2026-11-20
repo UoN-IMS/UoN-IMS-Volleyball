@@ -809,7 +809,8 @@ function computeStandings(weeks, scores) {
   const T = (name, div) => {
     const k = teamKey(name);
     if (!teams.has(k)) teams.set(k, { name: clean(name), division: div || "", form: [], P: 0, W: 0, D: 0, L: 0, w20: 0, w21: 0, l21: 0, l20: 0, SW: 0, SL: 0, PF: 0, PA: 0, Pts: 0 });
-    const t = teams.get(k); if (!t.division && div) t.division = div; return t;
+    // a team sits in the division of its latest game, so a reshuffle between stage weeks (e.g. Premier A/B) takes effect
+    const t = teams.get(k); if (div) t.division = div; return t;
   };
   for (const w of weeks) for (const m of w.matches || []) {
     if (uncounted(m)) continue;
@@ -2112,9 +2113,11 @@ if (typeof document !== "undefined") (function () {
   function stageStatus(id) {
     const ws = state.weeks.filter(w => (w.stage || "group") === id);
     if (!ws.length) return "upcoming";
-    const ms = ws.flatMap(w => w.matches || []);
+    // a stage is finished once all its real games have results, or once a later stage has fixtures
+    const later = state.weeks.some(w => STAGES.findIndex(s => s.id === (w.stage || "group")) > STAGES.findIndex(s => s.id === id));
+    const ms = ws.flatMap(w => w.matches || []).filter(m => isGame(m) && !m.friendly);
     const done = ms.filter(counts).length;
-    return done === ms.length ? "done" : done ? "live" : "scheduled";
+    return later || done === ms.length ? "done" : done ? "live" : "scheduled";
   }
   function renderStandings() {
     const v = $("#view-standings"); v.replaceChildren();
