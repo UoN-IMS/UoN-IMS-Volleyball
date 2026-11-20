@@ -1077,7 +1077,7 @@ if (typeof document !== "undefined") (function () {
     state.db = db; state.canWrite = true;
     await refreshAdmin();
     be.auth.onChange(refreshAdmin);
-    db.doc("config/league").onSnapshot(s => { state.league = s.exists ? s.data() : {}; renderHeader(); }, e => console.warn(e));
+    db.doc("config/league").onSnapshot(s => { state.league = s.exists ? s.data() : {}; renderHeader(); renderBanner(); }, e => console.warn(e));
     db.collection("weeks").orderBy("order").onSnapshot(s => {
       state.weeks = s.docs.map(d => ({ id: d.id, ...d.data() }));
       state.ready = true;
@@ -1215,6 +1215,8 @@ if (typeof document !== "undefined") (function () {
     const b = $("#banner"); b.replaceChildren();
     if (state.noDb) b.append(el("div", { class: "notice warn" }, el("div", {}, el("strong", { text: "This site isn't connected to its database yet. " }), "Add the Supabase URL and anon key to config.js (see the README).")));
     else if (state.loadError) b.append(el("div", { class: "notice warn" }, el("div", {}, el("strong", { text: "Couldn't load the league. " }), "Check your connection and refresh the page.")));
+    // organiser's site-wide notice, from config/league.notice (e.g. "No games on Sun 29 Nov")
+    else if (state.league && state.league.notice) b.append(el("div", { class: "notice warn" }, el("div", {}, el("strong", { text: "⚠️ " }), String(state.league.notice))));
   }
 
   /* ---------- fixtures ---------- */
